@@ -523,22 +523,25 @@ function closeModal(){$('modRoot').innerHTML='';}
 function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'📄',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',pptx:'📑',ppt:'📑',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',mp4:'🎬',csv:'📋',mp3:'🎵'}[e]||'📎';}
 
 // ─── FIREBASE READY ───
-document.addEventListener('fbReady',()=>{
-  console.log('fbReady event received');
-  $('loadScr').style.display='none';
-  $('loginScr').style.display='flex';
-  if(window.DB?.app?.options?.apiKey?.startsWith('REPLACE')) $('cfgWarn').classList.remove('hidden');
-  seedIfEmpty();
-});
-// Poll every 500ms — works on GitHub Pages where module loading is async
-let _poll=setInterval(()=>{
-  if(window._fbReady){clearInterval(_poll);
+// Poll every 300ms until Firebase module is ready — fixes GitHub Pages timing issue
+const _poll = setInterval(()=>{
+  if(window._fbReady && window.DB){
+    clearInterval(_poll);
     $('loadScr').style.display='none';
     $('loginScr').style.display='flex';
+    if(window.DB?.app?.options?.apiKey?.startsWith('REPLACE')) $('cfgWarn').classList.remove('hidden');
+    seedIfEmpty();
   }
-},500);
-// Hard timeout fallback after 10s
-setTimeout(()=>{clearInterval(_poll);if(!window._fbReady){$('loadScr').style.display='none';$('loginScr').style.display='flex';$('cfgWarn').classList.remove('hidden');}},10000);
+},300);
+// Hard timeout after 12s
+setTimeout(()=>{
+  clearInterval(_poll);
+  if(!window._fbReady){
+    $('loadScr').style.display='none';
+    $('loginScr').style.display='flex';
+    $('cfgWarn').classList.remove('hidden');
+  }
+},12000);
 
 // ─── SEED ───
 async function seedIfEmpty(){
