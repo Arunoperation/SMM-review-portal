@@ -29,8 +29,12 @@ const app = initializeApp(firebaseConfig);
 window.DB  = getFirestore(app);
 window.FS  = { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc };
 window._fbReady = true;
-document.dispatchEvent(new Event('fbReady'));
 console.log('Firebase initialized successfully for project:', app.options.projectId);
+// Directly show login from inside the module — no timing issues
+document.getElementById('loadScr').style.display = 'none';
+document.getElementById('loginScr').style.display = 'flex';
+// Seed default data if first time
+if(window.seedIfEmpty) window.seedIfEmpty();
 
 // ── DOWNLOAD from Firestore base64 ──
 async function downloadFile(uploadId, filename){
@@ -544,7 +548,7 @@ setTimeout(()=>{
 },12000);
 
 // ─── SEED ───
-async function seedIfEmpty(){
+window.seedIfEmpty = async function seedIfEmpty(){
   const {collection,getDocs,doc,setDoc}=window.FS;
   const snap=await getDocs(collection(window.DB,'users'));
   if(snap.empty){
