@@ -36,6 +36,21 @@ document.getElementById('loginScr').style.display = 'flex';
 // Seed default data if first time
 if(window.seedIfEmpty) window.seedIfEmpty();
 
+// Wire up login button events here (inside module = after all scripts loaded)
+const wireEvents = () => {
+  const signInBtn = document.getElementById('signInBtn');
+  const logoutBtn = document.getElementById('logoutBtn');
+  const chgPwBtn  = document.getElementById('chgPwBtn');
+  const liU = document.getElementById('liU');
+  const liP = document.getElementById('liP');
+  if(signInBtn) signInBtn.addEventListener('click', ()=>window.login());
+  if(logoutBtn) logoutBtn.addEventListener('click', ()=>window.logout());
+  if(chgPwBtn)  chgPwBtn.addEventListener('click',  ()=>window.changeMyPassword());
+  if(liU) liU.addEventListener('keydown', e=>{ if(e.key==='Enter') window.login(); });
+  if(liP) liP.addEventListener('keydown', e=>{ if(e.key==='Enter') window.login(); });
+};
+wireEvents();
+
 // ── PASSWORD MANAGEMENT ──
 function changeMyPassword(){
   $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
@@ -396,9 +411,9 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
   <div class="loginBox">
     <div class="lHead"><div class="lBadge">⚙️</div><h1>SMM Review Portal</h1><p>Manufacturing Excellence · Monthly Reports</p></div>
     <div id="cfgWarn" class="cfgWarn hidden">⚠️ Firebase not configured. Open the HTML file in Notepad and paste your Firebase config (see setup guide).</div>
-    <div class="lFld"><label>Username</label><input id="liU" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter')login()"></div>
-    <div class="lFld"><label>Password</label><input id="liP" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')login()"></div>
-    <button class="btnSignIn" onclick="login()">Sign In →</button>
+    <div class="lFld"><label>Username</label><input id="liU" type="text" placeholder="Enter username" id="liUInput"></div>
+    <div class="lFld"><label>Password</label><input id="liP" type="password" placeholder="Password" id="liUInput"></div>
+    <button class="btnSignIn" id="signInBtn">Sign In →</button>
     <div class="loginErr" id="loginErr"></div>
   </div>
 </div>
@@ -409,8 +424,8 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
     <div class="barRight">
       <span class="rolePill" id="topRole"></span>
       <span class="barUser" id="topUser"></span>
-      <button class="btnOut" onclick="changeMyPassword()" style="margin-right:4px;">🔑 Password</button>
-      <button class="btnOut" onclick="logout()">Sign out</button>
+      <button class="btnOut" id="chgPwBtn" style="margin-right:4px;">🔑 Password</button>
+      <button class="btnOut" id="logoutBtn">Sign out</button>
     </div>
   </div>
   <div class="shell">
