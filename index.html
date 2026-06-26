@@ -9,12 +9,6 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// ════════════════════════════════════════════════════
-// 🔧 FIREBASE CONFIG
-// IMPORTANT FOR GITHUB PAGES: Go to Firebase Console → Authentication → Settings → Authorized domains
-// Add your GitHub Pages URL: arunoperation.github.io
-// (Firebase Console → Project Settings → Your Apps → SDK setup)
-// ════════════════════════════════════════════════════
 const firebaseConfig = {
   apiKey: "AIzaSyB669nlcIdYZshq0UfVuZ8segGHAa0NdC8",
   authDomain: "smm-portal-51736.firebaseapp.com",
@@ -23,140 +17,60 @@ const firebaseConfig = {
   messagingSenderId: "769927865532",
   appId: "1:769927865532:web:eba79e089910e27de41cb9"
 };
-// ════════════════════════════════════════════════════
 
-const app = initializeApp(firebaseConfig);
-window.DB  = getFirestore(app);
-window.FS  = { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc };
-window._fbReady = true;
-console.log('Firebase initialized successfully for project:', app.options.projectId);
-// Directly show login from inside the module — no timing issues
-document.getElementById('loadScr').style.display = 'none';
-document.getElementById('loginScr').style.display = 'flex';
-// Seed default data if first time
-if(window.seedIfEmpty) window.seedIfEmpty();
+try {
+  const app = initializeApp(firebaseConfig);
+  window.DB = getFirestore(app);
+  window.FS = { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc };
+  console.log('Firebase ready:', app.options.projectId);
+  if(window._appInit) window._appInit();
+  else window._fbDone = true;
+} catch(e) {
+  console.error('Firebase error:', e);
+  document.getElementById('loadScr').style.display = 'none';
+  document.getElementById('loginScr').style.display = 'flex';
+}
 
-// Wire up login button events here (inside module = after all scripts loaded)
-const wireEvents = () => {
-  const signInBtn = document.getElementById('signInBtn');
-  const logoutBtn = document.getElementById('logoutBtn');
-  const chgPwBtn  = document.getElementById('chgPwBtn');
-  const liU = document.getElementById('liU');
-  const liP = document.getElementById('liP');
-  if(signInBtn) signInBtn.addEventListener('click', ()=>window.login());
-  if(logoutBtn) logoutBtn.addEventListener('click', ()=>window.logout());
-  if(chgPwBtn)  chgPwBtn.addEventListener('click',  ()=>window.changeMyPassword());
-  if(liU) liU.addEventListener('keydown', e=>{ if(e.key==='Enter') window.login(); });
-  if(liP) liP.addEventListener('keydown', e=>{ if(e.key==='Enter') window.login(); });
-};
-wireEvents();
+</script>
 
-// ── PASSWORD MANAGEMENT ──
+<script>
+// ════════════════ PASSWORD MANAGEMENT ════════════════
 function changeMyPassword(){
-  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
-    <div class="mBox">
-      <div class="mHead"><h3>🔑 Change My Password</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
-      <div class="mBody">
-        <div style="background:var(--blue-l);border-radius:7px;padding:11px 13px;font-size:12px;color:var(--blue);margin-bottom:14px;">
-          Logged in as: <b>${esc(CU.name)}</b> (${esc(CU.username)})
-        </div>
-        <div class="f2"><label>Current Password</label><input type="password" id="cpOld" placeholder="Enter current password"></div>
-        <div class="f2"><label>New Password</label><input type="password" id="cpNew" placeholder="Enter new password (min 6 chars)"></div>
-        <div class="f2"><label>Confirm New Password</label><input type="password" id="cpConf" placeholder="Re-enter new password"></div>
-        <div id="cpErr" style="color:var(--red);font-size:12px;min-height:16px;margin-top:4px;"></div>
-      </div>
-      <div class="mFoot">
-        <button class="btn btnO" onclick="closeModal()">Cancel</button>
-        <button class="btn btnP" onclick="saveMyPassword()">Save Password</button>
-      </div>
-    </div>
-  </div>\`;
+  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()"><div class="mBox"><div class="mHead"><h3>🔑 Change My Password</h3><button class="btnIc" onclick="closeModal()">✕</button></div><div class="mBody"><div style="background:var(--blue-l);border-radius:7px;padding:11px 13px;font-size:12px;color:var(--blue);margin-bottom:14px;">Logged in as: <b>${esc(CU.name)}</b></div><div class="f2"><label>Current Password</label><input type="password" id="cpOld" placeholder="Current password"></div><div class="f2"><label>New Password</label><input type="password" id="cpNew" placeholder="Min 6 characters"></div><div class="f2"><label>Confirm New Password</label><input type="password" id="cpConf" placeholder="Re-enter new password"></div><div id="cpErr" style="color:var(--red);font-size:12px;margin-top:4px;"></div></div><div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveMyPassword()">Save Password</button></div></div></div>`;
 }
-
 async function saveMyPassword(){
-  const old=$('cpOld').value;
-  const nw=$('cpNew').value;
-  const conf=$('cpConf').value;
-  const errEl=$('cpErr');
-  if(old!==CU.password){errEl.textContent='Current password is incorrect.';return;}
-  if(nw.length<6){errEl.textContent='New password must be at least 6 characters.';return;}
-  if(nw!==conf){errEl.textContent='Passwords do not match.';return;}
-  const {doc,setDoc}=window.FS;
-  await setDoc(doc(window.DB,'users',CU.id),{password:nw},{merge:true});
-  CU.password=nw;
-  closeModal();
-  toast('✅ Password changed successfully!');
+  const old=$('cpOld').value,nw=$('cpNew').value,conf=$('cpConf').value,err=$('cpErr');
+  if(old!==CU.password){err.textContent='Current password incorrect.';return;}
+  if(nw.length<6){err.textContent='Min 6 characters required.';return;}
+  if(nw!==conf){err.textContent='Passwords do not match.';return;}
+  await window.FS.setDoc(window.FS.doc(window.DB,'users',CU.id),{password:nw},{merge:true});
+  CU.password=nw;closeModal();toast('✅ Password changed!');
+}
+function resetUserPassword(userId,userName){
+  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()"><div class="mBox"><div class="mHead"><h3>🔑 Reset — ${esc(userName)}</h3><button class="btnIc" onclick="closeModal()">✕</button></div><div class="mBody"><div style="background:var(--amber-l);border-radius:7px;padding:11px 13px;font-size:12px;color:var(--amber);margin-bottom:14px;">Resetting password for <b>${esc(userName)}</b>. Inform them after saving.</div><div class="f2"><label>New Password</label><input type="password" id="rpNew" placeholder="Min 6 characters"></div><div class="f2"><label>Confirm</label><input type="password" id="rpConf" placeholder="Re-enter"></div><div id="rpErr" style="color:var(--red);font-size:12px;margin-top:4px;"></div></div><div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveResetPassword('${userId}','${esc(userName)}')">Reset</button></div></div></div>`;
+}
+async function saveResetPassword(userId,userName){
+  const nw=$('rpNew').value,conf=$('rpConf').value,err=$('rpErr');
+  if(nw.length<6){err.textContent='Min 6 chars.';return;}
+  if(nw!==conf){err.textContent='Passwords do not match.';return;}
+  await window.FS.setDoc(window.FS.doc(window.DB,'users',userId),{password:nw},{merge:true});
+  closeModal();toast('✅ Password reset for '+userName+'. Tell them the new password.');
 }
 
-function resetUserPassword(userId, userName){
-  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
-    <div class="mBox">
-      <div class="mHead"><h3>🔑 Reset Password — ${esc(userName)}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
-      <div class="mBody">
-        <div style="background:var(--amber-l);border-radius:7px;padding:11px 13px;font-size:12px;color:var(--amber);margin-bottom:14px;">
-          You are resetting the password for <b>${esc(userName)}</b>.<br>
-          Inform the user of their new password after saving.
-        </div>
-        <div class="f2"><label>New Password</label><input type="password" id="rpNew" placeholder="Set new password (min 6 chars)"></div>
-        <div class="f2"><label>Confirm Password</label><input type="password" id="rpConf" placeholder="Re-enter new password"></div>
-        <div id="rpErr" style="color:var(--red);font-size:12px;min-height:16px;margin-top:4px;"></div>
-      </div>
-      <div class="mFoot">
-        <button class="btn btnO" onclick="closeModal()">Cancel</button>
-        <button class="btn btnP" onclick="saveResetPassword('${userId}','${esc(userName)}')">Reset Password</button>
-      </div>
-    </div>
-  </div>\`;
-}
-
-async function saveResetPassword(userId, userName){
-  const nw=$('rpNew').value;
-  const conf=$('rpConf').value;
-  const errEl=$('rpErr');
-  if(nw.length<6){errEl.textContent='Password must be at least 6 characters.';return;}
-  if(nw!==conf){errEl.textContent='Passwords do not match.';return;}
-  const {doc,setDoc}=window.FS;
-  await setDoc(doc(window.DB,'users',userId),{password:nw},{merge:true});
-  closeModal();
-  toast(`✅ Password reset for ${userName}. Inform them of the new password.`);
-}
-
-// ── EXPOSE KEY FUNCTIONS GLOBALLY (fixes GitHub Pages scope issues) ──
-window.login = login;
-window.changeMyPassword = changeMyPassword;
-window.saveMyPassword = saveMyPassword;
-window.resetUserPassword = resetUserPassword;
-window.saveResetPassword = saveResetPassword;
-window.logout = logout;
-window.goto = goto;
-window.closeModal = closeModal;
-window.downloadFile = downloadFile;
-window.delFile = delFile;
-window.doUpload = doUpload;
-window.selFiles = selFiles;
-window.dropFiles = dropFiles;
-window.renderPend = renderPend;
-window.remPend = remPend;
-window.saveUser = saveUser;
-window.delUser = delUser;
-window.saveZone = saveZone;
-window.delZone = delZone;
-window.showUserModal = showUserModal;
-window.showUserModalById = showUserModalById;
-window.showZoneModal = showZoneModal;
-window.genSummary = genSummary;
-window.saveKey = saveKey;
-
-// ── DOWNLOAD from Firestore base64 ──
-async function downloadFile(uploadId, filename){
-  const {doc,getDoc}=window.FS;
-  const snap=await getDoc(doc(window.DB,'uploads',uploadId));
-  if(!snap.exists()){toast('File not found.');return;}
-  const b64=snap.data().fileData;
-  if(!b64){toast('No file data stored.');return;}
-  const a=document.createElement('a');
-  a.href=b64; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
-}
+// ════════════════ APP INIT (called by Firebase module) ════════════════
+window._appInit = function(){
+  document.getElementById('loadScr').style.display='none';
+  document.getElementById('loginScr').style.display='flex';
+  const sb=document.getElementById('signInBtn');
+  if(sb) sb.onclick=login;
+  const lu=document.getElementById('liU');
+  const lp=document.getElementById('liP');
+  if(lu) lu.onkeydown=e=>{if(e.key==='Enter')login();};
+  if(lp) lp.onkeydown=e=>{if(e.key==='Enter')login();};
+  seedIfEmpty();
+};
+setInterval(()=>{if(window._fbDone&&window.DB){window._fbDone=false;window._appInit();}},300);
+setTimeout(()=>{if(document.getElementById('loadScr').style.display!=='none'){document.getElementById('loadScr').style.display='none';document.getElementById('loginScr').style.display='flex';document.getElementById('cfgWarn').classList.remove('hidden');}},12000);
 </script>
 
 <style>
@@ -411,8 +325,8 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
   <div class="loginBox">
     <div class="lHead"><div class="lBadge">⚙️</div><h1>SMM Review Portal</h1><p>Manufacturing Excellence · Monthly Reports</p></div>
     <div id="cfgWarn" class="cfgWarn hidden">⚠️ Firebase not configured. Open the HTML file in Notepad and paste your Firebase config (see setup guide).</div>
-    <div class="lFld"><label>Username</label><input id="liU" type="text" placeholder="Enter username" id="liUInput"></div>
-    <div class="lFld"><label>Password</label><input id="liP" type="password" placeholder="Password" id="liUInput"></div>
+    <div class="lFld"><label>Username</label><input id="liU" type="text" placeholder="Enter username" ></div>
+    <div class="lFld"><label>Password</label><input id="liP" type="password" placeholder="Password" ></div>
     <button class="btnSignIn" id="signInBtn">Sign In →</button>
     <div class="loginErr" id="loginErr"></div>
   </div>
@@ -424,8 +338,7 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
     <div class="barRight">
       <span class="rolePill" id="topRole"></span>
       <span class="barUser" id="topUser"></span>
-      <button class="btnOut" id="chgPwBtn" style="margin-right:4px;">🔑 Password</button>
-      <button class="btnOut" id="logoutBtn">Sign out</button>
+      <button class="btnOut" style="margin-right:4px;" onclick="changeMyPassword()">🔑 Password</button><button class="btnOut" id="logoutBtn">Sign out</button>
     </div>
   </div>
   <div class="shell">
@@ -639,28 +552,10 @@ function closeModal(){$('modRoot').innerHTML='';}
 function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'📄',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',pptx:'📑',ppt:'📑',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',mp4:'🎬',csv:'📋',mp3:'🎵'}[e]||'📎';}
 
 // ─── FIREBASE READY ───
-// Poll every 300ms until Firebase module is ready — fixes GitHub Pages timing issue
-const _poll = setInterval(()=>{
-  if(window._fbReady && window.DB){
-    clearInterval(_poll);
-    $('loadScr').style.display='none';
-    $('loginScr').style.display='flex';
-    if(window.DB?.app?.options?.apiKey?.startsWith('REPLACE')) $('cfgWarn').classList.remove('hidden');
-    seedIfEmpty();
-  }
-},300);
-// Hard timeout after 12s
-setTimeout(()=>{
-  clearInterval(_poll);
-  if(!window._fbReady){
-    $('loadScr').style.display='none';
-    $('loginScr').style.display='flex';
-    $('cfgWarn').classList.remove('hidden');
-  }
-},12000);
+// Firebase handled via window._appInit below
 
 // ─── SEED ───
-window.seedIfEmpty = async function seedIfEmpty(){
+async function seedIfEmpty(){
   const {collection,getDocs,doc,setDoc}=window.FS;
   const snap=await getDocs(collection(window.DB,'users'));
   if(snap.empty){
@@ -697,11 +592,9 @@ async function login(){
     }
     buildBnav();
     goto('dash');
-    // Warn if using default/weak password
-    const defaultPasses=['arun123','leader123','pass123','123456','password','admin123'];
-    if(defaultPasses.includes(p)){
-      setTimeout(()=>toast('⚠️ You are using a default password. Click 🔑 Password in the top bar to change it.',6000),1500);
-    }
+    const lb=document.getElementById('logoutBtn');if(lb)lb.onclick=logout;
+    const defaultPasses=['arun123','leader123','pass123','123456','password'];
+    if(defaultPasses.includes(p)) setTimeout(()=>toast('⚠️ Default password detected. Click 🔑 Password to change it.',5000),1500);
   }catch(e){$('loginErr').textContent='Error: '+e.message;}
 }
 function logout(){CU=null;$('appScr').style.display='none';$('loginScr').style.display='flex';$('liP').value='';}
