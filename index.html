@@ -10,7 +10,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/fireba
 import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 // ════════════════════════════════════════════════════
-// 🔧 PASTE YOUR FIREBASE CONFIG HERE
+// 🔧 FIREBASE CONFIG
+// IMPORTANT FOR GITHUB PAGES: Go to Firebase Console → Authentication → Settings → Authorized domains
+// Add your GitHub Pages URL: arunoperation.github.io
 // (Firebase Console → Project Settings → Your Apps → SDK setup)
 // ════════════════════════════════════════════════════
 const firebaseConfig = {
@@ -28,6 +30,7 @@ window.DB  = getFirestore(app);
 window.FS  = { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc };
 window._fbReady = true;
 document.dispatchEvent(new Event('fbReady'));
+console.log('Firebase initialized successfully for project:', app.options.projectId);
 
 // ── DOWNLOAD from Firestore base64 ──
 async function downloadFile(uploadId, filename){
@@ -521,12 +524,21 @@ function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'�
 
 // ─── FIREBASE READY ───
 document.addEventListener('fbReady',()=>{
+  console.log('fbReady event received');
   $('loadScr').style.display='none';
   $('loginScr').style.display='flex';
   if(window.DB?.app?.options?.apiKey?.startsWith('REPLACE')) $('cfgWarn').classList.remove('hidden');
   seedIfEmpty();
 });
-setTimeout(()=>{if(!window._fbReady){$('loadScr').style.display='none';$('loginScr').style.display='flex';$('cfgWarn').classList.remove('hidden');}},4000);
+// Poll every 500ms — works on GitHub Pages where module loading is async
+let _poll=setInterval(()=>{
+  if(window._fbReady){clearInterval(_poll);
+    $('loadScr').style.display='none';
+    $('loginScr').style.display='flex';
+  }
+},500);
+// Hard timeout fallback after 10s
+setTimeout(()=>{clearInterval(_poll);if(!window._fbReady){$('loadScr').style.display='none';$('loginScr').style.display='flex';$('cfgWarn').classList.remove('hidden');}},10000);
 
 // ─── SEED ───
 async function seedIfEmpty(){
