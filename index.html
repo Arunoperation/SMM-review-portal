@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SMM Review Portal</title>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ════════════════════════════════════════════════════
+// 🔧 PASTE YOUR FIREBASE CONFIG HERE
+// (Firebase Console → Project Settings → Your Apps → SDK setup)
+// ════════════════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyB669nlcIdYZshq0UfVuZ8segGHAa0NdC8",
+  authDomain: "smm-portal-51736.firebaseapp.com",
+  projectId: "smm-portal-51736",
+  storageBucket: "smm-portal-51736.firebasestorage.app",
+  messagingSenderId: "769927865532",
+  appId: "1:769927865532:web:eba79e089910e27de41cb9"
+};
+// ════════════════════════════════════════════════════
+
+const app = initializeApp(firebaseConfig);
+window.DB  = getFirestore(app);
+window.FS  = { collection, doc, setDoc, getDoc, getDocs, deleteDoc, query, where, orderBy, onSnapshot, serverTimestamp, addDoc };
+window._fbReady = true;
+document.dispatchEvent(new Event('fbReady'));
+
+// ── DOWNLOAD from Firestore base64 ──
+async function downloadFile(uploadId, filename){
+  const {doc,getDoc}=window.FS;
+  const snap=await getDoc(doc(window.DB,'uploads',uploadId));
+  if(!snap.exists()){toast('File not found.');return;}
+  const b64=snap.data().fileData;
+  if(!b64){toast('No file data stored.');return;}
+  const a=document.createElement('a');
+  a.href=b64; a.download=filename; document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+</script>
+
+<style>
+:root{
+  --navy:#1a2f54;--blue:#2060b0;--blue-l:#e8f1fb;--sky:#4d90d4;
+  --green:#1a6038;--green-l:#e4f2ea;
+  --amber:#b45000;--amber-l:#fff0d6;
+  --red:#991b1b;--red-l:#fde8e8;
+  --purple:#5b21b6;--purple-l:#ede9fe;
+  --gray0:#f5f7fa;--gray1:#edf0f5;--gray2:#dde2ea;
+  --gray3:#98a5b8;--gray4:#5c6678;--text:#1a2233;
+  --white:#fff;--r:8px;--sh:0 2px 12px rgba(26,47,84,.09);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--gray0);color:var(--text);font-size:14px;}
+
+/* LOADING */
+#loadScr{position:fixed;inset:0;background:var(--navy);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:9999;color:#fff;gap:14px;}
+#loadScr .spin{font-size:42px;animation:rot 1.2s linear infinite;}
+@keyframes rot{to{transform:rotate(360deg);}}
+
+/* LOGIN */
+#loginScr{display:none;min-height:100vh;background:linear-gradient(145deg,var(--navy),#2060b0);align-items:center;justify-content:center;padding:20px;}
+.loginBox{background:var(--white);border-radius:18px;padding:40px 36px 32px;width:100%;max-width:380px;box-shadow:0 16px 48px rgba(0,0,0,.28);}
+.lHead{text-align:center;margin-bottom:28px;}
+.lBadge{display:inline-flex;align-items:center;justify-content:center;width:58px;height:58px;background:var(--navy);border-radius:14px;font-size:28px;margin-bottom:12px;}
+.lHead h1{font-size:20px;font-weight:700;color:var(--navy);}
+.lHead p{font-size:12px;color:var(--gray3);margin-top:3px;}
+.lFld{margin-bottom:14px;}
+.lFld label{display:block;font-size:11px;font-weight:700;color:var(--gray4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:5px;}
+.lFld input{width:100%;padding:10px 13px;border:1.5px solid var(--gray2);border-radius:var(--r);font-size:14px;outline:none;transition:border .2s;}
+.lFld input:focus{border-color:var(--blue);}
+.btnSignIn{width:100%;padding:11px;background:var(--blue);color:#fff;border:none;border-radius:var(--r);font-size:15px;font-weight:700;cursor:pointer;margin-top:4px;transition:background .2s;}
+.btnSignIn:hover{background:var(--navy);}
+.loginErr{color:var(--red);font-size:12px;text-align:center;margin-top:10px;min-height:16px;}
+.cfgWarn{background:var(--amber-l);border:1px solid #f0a040;border-radius:7px;padding:11px 13px;font-size:12px;color:var(--amber);margin-bottom:14px;line-height:1.5;}
+
+/* APP SHELL */
+#appScr{display:none;flex-direction:column;min-height:100vh;}
+.bar{background:var(--navy);color:#fff;height:54px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:sticky;top:0;z-index:300;box-shadow:0 2px 8px rgba(0,0,0,.2);}
+.barBrand{font-size:15px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.barDot{width:8px;height:8px;background:#4ade80;border-radius:50%;}
+.barRight{display:flex;align-items:center;gap:10px;}
+.rolePill{background:rgba(255,255,255,.16);border-radius:20px;padding:3px 11px;font-size:11px;font-weight:700;}
+.barUser{font-size:12px;color:rgba(255,255,255,.72);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.btnOut{background:none;border:1px solid rgba(255,255,255,.3);color:rgba(255,255,255,.85);padding:4px 12px;border-radius:20px;font-size:12px;cursor:pointer;}
+
+.shell{display:flex;flex:1;min-height:0;}
+
+/* SIDEBAR */
+.sidebar{width:220px;background:var(--white);border-right:1px solid var(--gray2);overflow-y:auto;flex-shrink:0;padding:8px 0;}
+.siGrp{font-size:10px;font-weight:700;color:var(--gray3);text-transform:uppercase;letter-spacing:.8px;padding:12px 16px 5px;}
+.siItem{display:flex;align-items:center;gap:9px;padding:9px 16px;font-size:13px;color:var(--gray4);cursor:pointer;border-left:3px solid transparent;transition:all .15s;user-select:none;}
+.siItem:hover{background:var(--blue-l);color:var(--blue);}
+.siItem.act{background:var(--blue-l);color:var(--navy);border-left-color:var(--blue);font-weight:600;}
+.siIcon{width:20px;text-align:center;flex-shrink:0;font-size:15px;}
+.siBadge{margin-left:auto;background:var(--red);color:#fff;border-radius:10px;font-size:10px;font-weight:700;padding:1px 6px;min-width:18px;text-align:center;}
+
+/* MODULE COLOR BANDS */
+.siItem[data-mod="1"]:hover,.siItem[data-mod="1"].act{background:#e4f2ea;color:var(--green);border-left-color:var(--green);}
+.siItem[data-mod="2"]:hover,.siItem[data-mod="2"].act{background:var(--purple-l);color:var(--purple);border-left-color:var(--purple);}
+
+/* MAIN */
+.mainArea{flex:1;overflow-y:auto;}
+.mainWrap{padding:20px 22px 48px;max-width:1080px;}
+
+/* BOTTOM NAV */
+.bnav{display:none;background:var(--white);border-top:1px solid var(--gray2);padding:5px 0 max(env(safe-area-inset-bottom),5px);position:sticky;bottom:0;z-index:200;}
+.bnavRow{display:flex;justify-content:space-around;}
+.bnavItem{display:flex;flex-direction:column;align-items:center;gap:2px;padding:5px 6px;cursor:pointer;border-radius:8px;min-width:50px;}
+.bnavItem.act .bnavLbl{color:var(--blue);}
+.bnavIco{font-size:20px;}
+.bnavLbl{font-size:10px;font-weight:600;color:var(--gray4);}
+
+/* PAGE ELEMENTS */
+.pgTitle{font-size:19px;font-weight:700;color:var(--navy);}
+.pgSub{font-size:12px;color:var(--gray3);margin-top:2px;margin-bottom:18px;}
+.modBand{display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px;}
+.modBand1{background:var(--green-l);color:var(--green);}
+.modBand2{background:var(--purple-l);color:var(--purple);}
+
+/* CARDS */
+.card{background:var(--white);border-radius:var(--r);box-shadow:var(--sh);padding:18px;margin-bottom:14px;}
+.cardHd{font-size:13px;font-weight:700;color:var(--navy);padding-bottom:10px;border-bottom:1px solid var(--gray1);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;}
+
+/* SECTION CHECKLIST */
+.sectionBlock{border:1px solid var(--gray2);border-radius:var(--r);overflow:hidden;margin-bottom:10px;}
+.sectionHead{background:var(--navy);color:#fff;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;}
+.sectionHead h4{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px;}
+.sectionHead .sCount{font-size:11px;opacity:.75;}
+.sectionBody{padding:14px 16px;}
+.checkItem{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:6px;margin-bottom:6px;background:var(--gray0);font-size:12px;line-height:1.5;}
+.checkItem:last-child{margin-bottom:0;}
+.checkItem .cIcon{flex-shrink:0;font-size:15px;margin-top:1px;}
+.checkItem .cText{flex:1;color:var(--text);}
+.checkItem .cStatus{flex-shrink:0;margin-left:6px;}
+
+/* UPLOAD */
+.uploadZone{border:2px dashed var(--gray2);border-radius:var(--r);padding:20px 14px;text-align:center;cursor:pointer;transition:all .2s;background:var(--gray0);margin-bottom:8px;}
+.uploadZone:hover,.uploadZone.drag{border-color:var(--blue);background:var(--blue-l);}
+.uzIco{font-size:28px;margin-bottom:6px;}
+.uploadZone p{font-size:13px;color:var(--gray4);}
+.uploadZone p b{color:var(--blue);}
+.uploadZone small{font-size:11px;color:var(--gray3);}
+.pendRow{display:flex;align-items:center;gap:8px;padding:7px 11px;background:var(--blue-l);border:1px solid #93c5fd;border-radius:6px;margin-top:6px;}
+.pName{flex:1;font-size:12px;font-weight:500;color:var(--navy);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.pSize{font-size:11px;color:var(--gray3);white-space:nowrap;}
+.pRem{cursor:pointer;color:var(--red);padding:2px 5px;border-radius:3px;font-size:14px;}
+
+/* FILE ROWS */
+.fileRow{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--gray2);border-radius:7px;margin-bottom:6px;background:var(--gray0);}
+.fileRow:hover{background:var(--blue-l);}
+.frIco{font-size:18px;flex-shrink:0;}
+.frInfo{flex:1;min-width:0;}
+.frName{font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.frMeta{font-size:11px;color:var(--gray3);margin-top:1px;}
+.frActs{display:flex;gap:4px;flex-shrink:0;}
+
+/* PROGRESS */
+.progWrap{background:var(--gray2);border-radius:8px;height:6px;overflow:hidden;margin-top:5px;}
+.progBar{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--blue),var(--sky));transition:width .3s;}
+
+/* STATS */
+.statsGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:14px;}
+.statBox{background:var(--white);border-radius:var(--r);box-shadow:var(--sh);padding:13px 15px;}
+.stLbl{font-size:10px;font-weight:700;color:var(--gray3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px;}
+.stNum{font-size:24px;font-weight:700;color:var(--navy);}
+.stSub{font-size:11px;color:var(--gray3);}
+
+/* MODULE OVERVIEW CARDS */
+.modCard{border-radius:var(--r);padding:18px;margin-bottom:12px;cursor:pointer;transition:box-shadow .18s;border:1.5px solid transparent;}
+.modCard:hover{box-shadow:0 6px 20px rgba(26,47,84,.14);}
+.modCard1{background:linear-gradient(135deg,#e4f2ea,#f0f8f0);border-color:#a8d5b8;}
+.modCard2{background:linear-gradient(135deg,#ede9fe,#f5f0ff);border-color:#c4b5fd;}
+.modCardTop{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
+.modCardTitle{font-size:15px;font-weight:700;color:var(--navy);}
+.modCardSubs{font-size:12px;color:var(--gray4);margin-bottom:10px;}
+.modProgress{display:flex;align-items:center;gap:10px;}
+.modPct{font-size:13px;font-weight:700;color:var(--navy);min-width:38px;}
+
+/* GAP MATRIX */
+.matrixWrap{overflow-x:auto;border-radius:var(--r);box-shadow:var(--sh);}
+.matrix{width:100%;border-collapse:collapse;font-size:12px;}
+.matrix th{background:var(--navy);color:#fff;padding:7px 10px;text-align:left;white-space:nowrap;font-size:10px;text-transform:uppercase;letter-spacing:.4px;}
+.matrix td{padding:7px 10px;border-bottom:1px solid var(--gray1);white-space:nowrap;}
+.matrix tr:last-child td{border-bottom:none;}
+.matrix tr:hover td{background:var(--gray0);}
+.cellOk{text-align:center;color:var(--green);font-size:14px;}
+.cellMiss{text-align:center;color:var(--red);font-size:14px;}
+.cellPart{text-align:center;color:var(--amber);font-size:14px;}
+
+/* BUTTONS */
+.btn{display:inline-flex;align-items:center;gap:5px;padding:8px 15px;border-radius:var(--r);font-size:13px;font-weight:600;cursor:pointer;border:none;transition:all .18s;white-space:nowrap;}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btnP{background:var(--blue);color:#fff;}
+.btnP:hover:not(:disabled){background:var(--navy);}
+.btnS{background:var(--green);color:#fff;}
+.btnS:hover:not(:disabled){opacity:.85;}
+.btnO{background:var(--white);color:var(--navy);border:1.5px solid var(--gray2);}
+.btnO:hover:not(:disabled){border-color:var(--blue);color:var(--blue);}
+.btnD{background:var(--red);color:#fff;}
+.btnSm{padding:5px 10px;font-size:11px;}
+.btnIc{background:none;border:none;font-size:16px;cursor:pointer;padding:3px;border-radius:4px;}
+.btnIc:hover{background:var(--gray2);}
+.btnRow{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+
+/* PILLS */
+.pill{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;}
+.pg{background:var(--green-l);color:var(--green);}
+.pa{background:var(--amber-l);color:var(--amber);}
+.pr{background:var(--red-l);color:var(--red);}
+.pb{background:var(--blue-l);color:var(--blue);}
+.pp{background:var(--purple-l);color:var(--purple);}
+.px{background:var(--gray1);color:var(--gray4);}
+
+/* AI PANEL */
+.aiBox{background:linear-gradient(135deg,#0f1f44,#1c3468);border-radius:var(--r);padding:18px;color:#fff;margin-bottom:14px;}
+.aiBox h3{font-size:14px;font-weight:700;display:flex;align-items:center;gap:8px;margin-bottom:4px;}
+.aiBox .aiSub{font-size:12px;color:rgba(255,255,255,.6);margin-bottom:12px;}
+.aiKeyRow{display:flex;gap:8px;margin-bottom:10px;}
+.aiKeyRow input{flex:1;padding:9px 11px;border-radius:6px;border:none;font-size:13px;background:rgba(255,255,255,.13);color:#fff;outline:none;}
+.aiKeyRow input::placeholder{color:rgba(255,255,255,.38);}
+.aiKeyRow input:focus{background:rgba(255,255,255,.2);}
+.aiCtrl{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center;}
+.aiCtrl select{padding:8px 12px;border-radius:6px;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:13px;outline:none;}
+.aiCtrl select option{background:#1c3468;color:#fff;}
+.aiBtnRun{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.28);color:#fff;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:background .2s;}
+.aiBtnRun:hover:not(:disabled){background:rgba(255,255,255,.28);}
+.aiBtnRun:disabled{opacity:.4;cursor:not-allowed;}
+.aiResult{background:rgba(255,255,255,.07);border-radius:6px;padding:14px;font-size:13px;line-height:1.78;max-height:400px;overflow-y:auto;white-space:pre-wrap;margin-top:10px;}
+
+/* SUMMARY CARD */
+.sumCard{border:1px solid var(--gray2);border-radius:var(--r);overflow:hidden;margin-bottom:10px;}
+.sumHead{background:var(--navy);color:#fff;padding:11px 15px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;}
+.sumHead h4{font-size:13px;font-weight:700;}
+.sumHead .smeta{font-size:11px;opacity:.65;}
+.sumBody{padding:14px 16px;font-size:13px;line-height:1.75;background:var(--white);white-space:pre-wrap;}
+
+/* MODAL */
+.mOvr{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:600;display:flex;align-items:flex-end;justify-content:center;}
+.mOvr.ctr{align-items:center;padding:20px;}
+.mBox{background:var(--white);border-radius:16px 16px 0 0;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;animation:sup .2s ease;}
+.mOvr.ctr .mBox{border-radius:12px;animation:fin .16s ease;}
+@keyframes sup{from{transform:translateY(50px);opacity:0}to{transform:translateY(0);opacity:1}}
+@keyframes fin{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+.mHead{padding:16px 19px;border-bottom:1px solid var(--gray1);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;background:var(--white);z-index:1;}
+.mHead h3{font-size:15px;font-weight:700;color:var(--navy);}
+.mBody{padding:19px;}
+.mFoot{padding:13px 19px;border-top:1px solid var(--gray1);display:flex;justify-content:flex-end;gap:8px;}
+.f2{margin-bottom:12px;}
+.f2 label{display:block;font-size:11px;font-weight:700;color:var(--gray4);text-transform:uppercase;letter-spacing:.4px;margin-bottom:5px;}
+.f2 input,.f2 select,.f2 textarea{width:100%;padding:9px 11px;border:1.5px solid var(--gray2);border-radius:var(--r);font-size:13px;outline:none;font-family:inherit;color:var(--text);transition:border .2s;}
+.f2 input:focus,.f2 select:focus,.f2 textarea:focus{border-color:var(--blue);}
+
+/* TABS */
+.tabs{display:flex;gap:3px;border-bottom:2px solid var(--gray2);margin-bottom:16px;}
+.tab{padding:8px 15px;font-size:13px;font-weight:600;color:var(--gray4);cursor:pointer;border-radius:7px 7px 0 0;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .14s;}
+.tab:hover{color:var(--blue);}
+.tab.act{color:var(--navy);border-bottom-color:var(--blue);background:var(--blue-l);}
+
+/* TOAST */
+#toast{position:fixed;bottom:64px;left:50%;transform:translateX(-50%) translateY(14px);background:var(--navy);color:#fff;padding:10px 20px;border-radius:22px;font-size:13px;font-weight:500;z-index:9999;opacity:0;transition:all .26s;pointer-events:none;white-space:nowrap;box-shadow:0 4px 18px rgba(0,0,0,.25);}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+/* UTIL */
+.hidden{display:none!important;}
+.mt8{margin-top:8px;}.mt12{margin-top:12px;}.mt16{margin-top:16px;}
+.mb8{margin-bottom:8px;}.mb12{margin-bottom:12px;}.mb0{margin-bottom:0;}
+.tblWrap{overflow-x:auto;border-radius:var(--r);box-shadow:var(--sh);}
+.tbl{width:100%;border-collapse:collapse;font-size:13px;}
+.tbl th{background:var(--navy);color:#fff;text-align:left;padding:8px 11px;font-size:11px;text-transform:uppercase;letter-spacing:.4px;font-weight:600;white-space:nowrap;}
+.tbl td{padding:8px 11px;border-bottom:1px solid var(--gray1);vertical-align:middle;}
+.tbl tr:last-child td{border-bottom:none;}
+.tbl tr:hover td{background:var(--gray0);}
+
+@media(max-width:640px){
+  .sidebar{display:none;}.bnav{display:block;}
+  .mainWrap{padding:12px 12px 80px;}
+  .statsGrid{grid-template-columns:repeat(2,1fr);}
+  .pgTitle{font-size:16px;}
+  .mOvr{padding:0;}
+  .barUser{display:none;}
+  .aiKeyRow{flex-direction:column;}
+}
+</style>
+</head>
+<body>
+
+<div id="loadScr"><div class="spin">⚙️</div><p style="font-size:13px;opacity:.7">Connecting...</p></div>
+
+<div id="loginScr" style="display:none;flex-direction:column;">
+  <div class="loginBox">
+    <div class="lHead"><div class="lBadge">⚙️</div><h1>SMM Review Portal</h1><p>Manufacturing Excellence · Monthly Reports</p></div>
+    <div id="cfgWarn" class="cfgWarn hidden">⚠️ Firebase not configured. Open the HTML file in Notepad and paste your Firebase config (see setup guide).</div>
+    <div class="lFld"><label>Username</label><input id="liU" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter')login()"></div>
+    <div class="lFld"><label>Password</label><input id="liP" type="password" placeholder="Password" onkeydown="if(event.key==='Enter')login()"></div>
+    <button class="btnSignIn" onclick="login()">Sign In →</button>
+    <div class="loginErr" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="appScr" style="display:none;flex-direction:column;min-height:100vh;">
+  <div class="bar">
+    <div class="barBrand"><div class="barDot"></div>SMM Review Portal</div>
+    <div class="barRight">
+      <span class="rolePill" id="topRole"></span>
+      <span class="barUser" id="topUser"></span>
+      <button class="btnOut" onclick="logout()">Sign out</button>
+    </div>
+  </div>
+  <div class="shell">
+    <div class="sidebar" id="sideEl">
+      <div class="siGrp">Overview</div>
+      <div class="siItem act" data-p="dash"><span class="siIcon">🏠</span>Dashboard</div>
+
+      <div class="siGrp" style="color:var(--green)">Module 1 — 5S & Workplace</div>
+      <div class="siItem" data-p="m1_5s" data-mod="1"><span class="siIcon">🏭</span>5S Reports</div>
+      <div class="siItem" data-p="m1_vm" data-mod="1"><span class="siIcon">📋</span>Visual Management</div>
+      <div class="siItem" data-p="m1_gemba" data-mod="1"><span class="siIcon">👣</span>Gemba Huddle</div>
+
+      <div class="siGrp" style="color:var(--purple)">Module 2 — Operations</div>
+      <div class="siItem" data-p="m2_oee" data-mod="2"><span class="siIcon">📊</span>OEE</div>
+      <div class="siItem" data-p="m2_skill" data-mod="2"><span class="siIcon">🎓</span>Skill Matrix</div>
+      <div class="siItem" data-p="m2_kanban" data-mod="2"><span class="siIcon">🔄</span>KANBAN</div>
+      <div class="siItem" data-p="m2_pfmea" data-mod="2"><span class="siIcon">⚠️</span>PFMEA</div>
+      <div class="siItem" data-p="m2_constraint" data-mod="2"><span class="siIcon">🔩</span>Constraint Mgmt</div>
+      <div class="siItem" data-p="m2_msa" data-mod="2"><span class="siIcon">📐</span>MSA</div>
+      <div class="siItem" data-p="m2_spc" data-mod="2"><span class="siIcon">📈</span>SPC</div>
+      <div class="siItem" data-p="m2_tpm" data-mod="2"><span class="siIcon">🔧</span>TPM AM</div>
+      <div class="siItem" data-p="m2_lpa" data-mod="2"><span class="siIcon">🔍</span>Layered Audits</div>
+      <div class="siItem" data-p="m2_qa" data-mod="2"><span class="siIcon">🚨</span>Quality Alerts</div>
+      <div class="siItem" data-p="m2_kaizen" data-mod="2"><span class="siIcon">💡</span>Kaizen Events</div>
+      <div class="siItem" data-p="m2_proj" data-mod="2"><span class="siIcon">📁</span>Master Projects</div>
+
+      <div class="siGrp" id="siAdmGrp" style="display:none">Admin</div>
+      <div class="siItem hidden" data-p="ai_sum" id="siAI"><span class="siIcon">🤖</span>AI Summaries</div>
+      <div class="siItem hidden" data-p="all_files" id="siFiles"><span class="siIcon">📂</span>All Files</div>
+      <div class="siItem hidden" data-p="users" id="siUsers"><span class="siIcon">👥</span>Users</div>
+      <div class="siItem hidden" data-p="zones" id="siZones"><span class="siIcon">🗂️</span>Zones</div>
+    </div>
+    <div class="mainArea"><div class="mainWrap" id="mc"></div></div>
+  </div>
+  <nav class="bnav"><div class="bnavRow" id="bnavRow"></div></nav>
+</div>
+
+<div id="toast"></div>
+<div id="modRoot"></div>
+
+<script>
+// ═══════════════════════════════════════════════════
+// MODULE STRUCTURE — exactly from consultant report
+// ═══════════════════════════════════════════════════
+const SECTIONS = {
+  // ── MODULE 1: 5S & WORKPLACE ─────────────────────
+  m1_5s: {
+    mod:1, label:'5S Reports', icon:'🏭',
+    required: [
+      'Corrections & improvements against 13 Apr\'26 and 14 Jun\'26 gemba walk feedback — all zones',
+      'Status of action plan in Zone 3,4,5,6 to achieve 5S score of 90',
+      'Cleaning checklist for Non-M/C items / common areas — how many prepared & followed, how many pending (summary table)',
+      'Almirahs organised — zone-wise summary (Complete / In Progress)',
+      'Racks organised — zone-wise summary (Complete / In Progress)',
+      'Shadow boards planned vs made — zone-wise summary',
+      '5S Audit score trend (line diagram) — all Zones',
+      '5S Abnormalities — new Zones 3 to 8',
+      '5S Source of contamination reports — Zones 3,4,5,6,7,8',
+      'Area-wise status: Pipeline colour codes display in all zones',
+      'Area-wise status: Working zone marking on all gauges',
+      'Area-wise status: Direction of rotation marking on all motors',
+      'Proposed redesign of 1 area/zone by CFT (next-level 5S planning)',
+      'Photos: 5S Rules, DOs & DON\'Ts — English & Hindi — every zone',
+      'Colour photos of Zone team at every zone (PPT slide 3)',
+      'Direction marking photos in all Zones',
+    ]
+  },
+  m1_vm: {
+    mod:1, label:'Visual Management', icon:'📋',
+    required: [
+      'Photos: Visual Boards with Action Plans in last row — all Zones (PPT slide 8,9)',
+      'Status of Visual SOPs — all Zones: Operations, Setup/Changeover, Routine Inspection',
+      'Monthly KPIs with traffic lights & Daily KPI boards with trend lines — all Zones/selected Zones',
+      'Losses data (Stack diagrams) — all Zones / selected Zones',
+      'Losses analysis: RCA / WHY-WHY for Top 3 losses & Red KPIs — March, April, May\'26 — all Zones',
+      'Status of Phase 1 Visual Management implementation in new Zones 4 to 8',
+      'Quality Board & Maintenance Board photos (Shiv & Devendra to update)',
+      'RCAs for April & May major losses — 6 selected operations (Rakesh Jha PPT slide 7)',
+      'Standard Visual Management board design & implementation photos — all Zones',
+      'Visual Standards / Checklists in all Major operations — Input / During / Output (Shiv Mohan)',
+      'Display of downtime % — operation-wise monthly — every zone (Rakesh Singh)',
+      'Display of daily downtime (breakdown) losses & monthly losses trend — each operation (Rakesh Singh)',
+    ]
+  },
+  m1_gemba: {
+    mod:1, label:'Gemba Huddle', icon:'👣',
+    required: [
+      'May\'26 Gemba Huddle report (not received — marked by consultant)',
+    ]
+  },
+  // ── MODULE 2: OPERATIONS EXCELLENCE ──────────────
+  m2_oee: {
+    mod:2, label:'OEE', icon:'📊',
+    required: [
+      'OEE, Availability, Performance, Quality trend & Major losses DATA — VA Tech, Furnaces, Molding M/Cs — till May\'26 (STANDARD FORMAT, incl. Performance Losses)',
+      'RCA & Improvement action plans for April & May major losses — Furnaces & Molding M/Cs (MUST)',
+      'FY26-27 Targets: OEE, Availability, Performance, Quality, Major Losses — Induction Furnace & Molding M/Cs (PPT slide 12,13)',
+      'Improvement action plans to achieve FY26-27 Q2 & Q3 targets (PPT slide 14 format)',
+    ]
+  },
+  m2_skill: {
+    mod:2, label:'Skill Matrix', icon:'🎓',
+    required: [
+      'Training status as per Training Plan — as on May\'26 — FOR ALL OPERATIONS',
+      'Verification of training effectiveness — status of each trained person in every zone/operation',
+    ]
+  },
+  m2_kanban: {
+    mod:2, label:'KANBAN', icon:'🔄',
+    required: [
+      'Photos of Kanban Posts for both items in their locations',
+      'Photos of Kanban Cards for both items',
+      'Since when KANBAN practice started by Imran and Prashant — confirm date',
+    ]
+  },
+  m2_pfmea: {
+    mod:2, label:'PFMEA Projects', icon:'⚠️',
+    required: [
+      'Complete FMEA sheet — Kongsberg: RPNs for all process steps (Failure Modes > Cause > Current Control), corrective & improvement action plans for high-risk/high RPN items',
+      'Complete FMEA sheet — Valmet: RPNs for all process steps (Failure Modes > Cause > Current Control), corrective & improvement action plans for high-risk/high RPN items',
+    ]
+  },
+  m2_constraint: {
+    mod:2, label:'Constraint Management', icon:'🔩',
+    required: [
+      'Project team details — who has been formed (team members list)',
+      'Data collected in Constraint Management worksheets for 2 bottleneck operations (PPT slide 29,30)',
+    ]
+  },
+  m2_msa: {
+    mod:2, label:'MSA', icon:'📐',
+    required: [
+      'Status of MSAs conducted so far — Gage R&R, Attribute MSA — as per plan',
+      'Results of MSAs conducted — summary table',
+    ]
+  },
+  m2_spc: {
+    mod:2, label:'SPC', icon:'📈',
+    required: [
+      'Process capability (Cp, Cpk) studies conducted — monthly plan vs actual',
+      'Measured & collected data of selected critical parameter + Cp, Cpk values till April\'26',
+      'Individual Control Charts developed — data, UCL/LCL values, charts (how many done)',
+    ]
+  },
+  m2_tpm: {
+    mod:2, label:'TPM AM', icon:'🔧',
+    required: [
+      'Abnormality Tagging status (identified, closed) — month-wise till May\'26 + 2-year type-wise summary (PPT slide 27)',
+      'Source of contamination (photos) & Hard-to-access areas (photos) — improvement action status till May\'26',
+      'MTBF / MTTR / % Downtime / OEE — monthly data trend till May\'26',
+      'RCA / Why-Why + corrective/improvement action plan for Major Breakdowns (>1 hour) — Jan to May\'26',
+      'TPM AM Level 4: Use of General Inspection checklist by Operators from 15 May\'26 — photo (PPT slide 23,24,25)',
+      'Countermeasure instruction for each General Inspection checkpoint — FOR ALL original check points (Operators & Maintenance separately)',
+      'Operators trained on all Countermeasures — training evidence & records — photo',
+      'Register opened: Operators writing abnormalities/deviations — photo',
+      'Time records for each General Inspection point (1-week data May/Jun\'26) — FOR ALL originally prepared check points',
+    ]
+  },
+  m2_lpa: {
+    mod:2, label:'Layered Process Audits', icon:'🔍',
+    required: [
+      'LPA Champion identified — name',
+      'Pilot area / Operation selected to start LPA',
+      'Auditors nominated at all levels: Junior, Middle, Senior Management (Zone Leaders, Engineers, HODs of Quality, Production, Maintenance)',
+      'Frequency plan: who audits when — daily, weekly, bi-weekly, monthly',
+      'Method of tracking audit compliance by nominated auditors',
+      'Audit checklists for various levels/layers',
+      'Process for communicating, publishing & storing Audit reports and NCs (SOP)',
+    ]
+  },
+  m2_qa: {
+    mod:2, label:'Quality Alerts', icon:'🚨',
+    required: [
+      'Decision on Quality Alerts process — has it been prepared?',
+      'SOP: Source of Quality Alerts, which concerns lead to alerts, format, who prepares, where to display, how to communicate to all, where to preserve after few months',
+    ]
+  },
+  m2_kaizen: {
+    mod:2, label:'Kaizen Events', icon:'💡',
+    required: [
+      'Plan vs Status: how many Kaizen events conducted against Q1 plan (PPT slide 38)',
+      'Single-page Kaizen forms for all Kaizen events conducted (PPT slide 32 format)',
+    ]
+  },
+  m2_proj: {
+    mod:2, label:'Master Projects FY26-27', icon:'📁',
+    required: [
+      'Master List of all FY26-27 Projects — status not received',
+      'Data on who has been trained on which tools in last 4 years (everyone should be in 2-3 projects)',
+    ]
+  },
+};
+
+const MOD1_KEYS = ['m1_5s','m1_vm','m1_gemba'];
+const MOD2_KEYS = ['m2_oee','m2_skill','m2_kanban','m2_pfmea','m2_constraint','m2_msa','m2_spc','m2_tpm','m2_lpa','m2_qa','m2_kaizen','m2_proj'];
+const ALL_KEYS  = [...MOD1_KEYS, ...MOD2_KEYS];
+
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const NOW=new Date();
+const CURMONTH=`${MONTHS[NOW.getMonth()]}-${String(NOW.getFullYear()).slice(-2)}`;
+
+let CU=null; let CP='dash'; let pendFiles={};
+
+// ─── UTILS ───
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,5);}
+function bytes(n){if(n<1024)return n+'B';if(n<1048576)return(n/1024).toFixed(1)+'KB';return(n/1048576).toFixed(1)+'MB';}
+function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function $(id){return document.getElementById(id);}
+function toast(msg,d=2800){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
+function closeModal(){$('modRoot').innerHTML='';}
+function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'📄',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',pptx:'📑',ppt:'📑',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',mp4:'🎬',csv:'📋',mp3:'🎵'}[e]||'📎';}
+
+// ─── FIREBASE READY ───
+document.addEventListener('fbReady',()=>{
+  $('loadScr').style.display='none';
+  $('loginScr').style.display='flex';
+  if(window.DB?.app?.options?.apiKey?.startsWith('REPLACE')) $('cfgWarn').classList.remove('hidden');
+  seedIfEmpty();
+});
+setTimeout(()=>{if(!window._fbReady){$('loadScr').style.display='none';$('loginScr').style.display='flex';$('cfgWarn').classList.remove('hidden');}},4000);
+
+// ─── SEED ───
+async function seedIfEmpty(){
+  const {collection,getDocs,doc,setDoc}=window.FS;
+  const snap=await getDocs(collection(window.DB,'users'));
+  if(snap.empty){
+    await setDoc(doc(collection(window.DB,'users')),{name:'Arun (Coordinator)',username:'arun',password:'arun123',role:'coordinator',zoneId:'',zoneName:'All Zones'});
+    const zones=[{name:'Zone 1',desc:'Pattern Moulding & Assembly'},{name:'Zone 2',desc:'Wax Dipping & Shell Building'},{name:'Zone 3',desc:'Dewax & Casting'},{name:'Zone 4',desc:'Knockout & Fettling'},{name:'Zone 5',desc:'Heat Treatment'},{name:'Zone 6',desc:'NDT / Quality'},{name:'Zone 7',desc:'Machining / CNC'},{name:'Zone 8',desc:'Dispatch & Packing'}];
+    for(const z of zones) await setDoc(doc(collection(window.DB,'zones')),z);
+  }
+}
+
+// ─── AUTH ───
+async function login(){
+  const u=$('liU').value.trim().toLowerCase(), p=$('liP').value;
+  $('loginErr').textContent='';
+  if(!u||!p){$('loginErr').textContent='Enter username and password.';return;}
+  try{
+    const {collection,query,where,getDocs}=window.FS;
+    const snap=await getDocs(query(collection(window.DB,'users'),where('username','==',u)));
+    if(snap.empty){$('loginErr').textContent='User not found.';return;}
+    const d=snap.docs[0];
+    const ud=d.data();
+    if(ud.password!==p){$('loginErr').textContent='Wrong password.';return;}
+    CU={id:d.id,...ud};
+    $('loginScr').style.display='none';
+    $('appScr').style.display='flex';
+    $('topRole').textContent={admin:'Admin',coordinator:'Coordinator',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
+    $('topUser').textContent=CU.name;
+    const isAdm=CU.role==='admin'||CU.role==='coordinator';
+    const isCons=CU.role==='consultant';
+    if(isAdm||isCons){
+      $('siAdmGrp').style.display='';
+      $('siAI').classList.remove('hidden');
+      $('siFiles').classList.remove('hidden');
+      if(isAdm){$('siUsers').classList.remove('hidden');$('siZones').classList.remove('hidden');}
+    }
+    buildBnav();
+    goto('dash');
+  }catch(e){$('loginErr').textContent='Error: '+e.message;}
+}
+function logout(){CU=null;$('appScr').style.display='none';$('loginScr').style.display='flex';$('liP').value='';}
+
+// ─── NAV ───
+function buildBnav(){
+  const items=[{p:'dash',ico:'🏠',lbl:'Home'},{p:'m1_5s',ico:'🏭',lbl:'5S'},{p:'m2_oee',ico:'📊',lbl:'OEE'},{p:'ai_sum',ico:'🤖',lbl:'Summary',adm:true},{p:'all_files',ico:'📂',lbl:'Files',adm:true}];
+  const isAdm=CU.role!=='leader';
+  $('bnavRow').innerHTML=items.filter(i=>!i.adm||isAdm).map(i=>`<div class="bnavItem${i.p===CP?' act':''}" id="bn-${i.p}" onclick="goto('${i.p}')"><span class="bnavIco">${i.ico}</span><span class="bnavLbl">${i.lbl}</span></div>`).join('');
+}
+$('sideEl').addEventListener('click',e=>{const it=e.target.closest('.siItem[data-p]');if(it)goto(it.dataset.p);});
+function goto(p){
+  CP=p;
+  document.querySelectorAll('.siItem').forEach(el=>el.classList.remove('act'));
+  const si=document.querySelector(`.siItem[data-p="${p}"]`);if(si)si.classList.add('act');
+  document.querySelectorAll('.bnavItem').forEach(el=>el.classList.remove('act'));
+  const bn=$('bn-'+p);if(bn)bn.classList.add('act');
+  render();
+}
+
+// ─── RENDER DISPATCH ───
+function render(){
+  const mc=$('mc');
+  mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Loading...</div>';
+  if(CP==='dash'){renderDash();return;}
+  if(CP==='ai_sum'){renderAI();return;}
+  if(CP==='all_files'){renderAllFiles();return;}
+  if(CP==='users'){renderUsers();return;}
+  if(CP==='zones'){renderZones();return;}
+  if(SECTIONS[CP]){renderSection(CP);return;}
+  mc.innerHTML='<p>Page not found.</p>';
+}
+
+// ═══════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════
+async function renderDash(){
+  const mc=$('mc');
+  const {collection,query,where,getDocs}=window.FS;
+  const isAdmin=CU.role!=='leader';
+
+  let uQ;
+  if(CU.role==='leader') uQ=query(collection(window.DB,'uploads'),where('zoneId','==',CU.zoneId),where('month','==',CURMONTH));
+  else uQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
+  const uSnap=await getDocs(uQ);
+  const uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const coveredSections=new Set(uploads.map(u=>u.sectionId)).size;
+  const totalSections=ALL_KEYS.length;
+  const pct=Math.round(coveredSections/totalSections*100);
+
+  // Module coverage
+  const m1cov=MOD1_KEYS.filter(k=>uploads.find(u=>u.sectionId===k)).length;
+  const m2cov=MOD2_KEYS.filter(k=>uploads.find(u=>u.sectionId===k)).length;
+
+  // Zone matrix (admin only)
+  let matrixHTML='';
+  if(isAdmin){
+    const zSnap=await getDocs(collection(window.DB,'zones'));
+    const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const allUQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
+    const allU=(await getDocs(allUQ)).docs.map(d=>({id:d.id,...d.data()}));
+    const mod1done=MOD1_KEYS.map(k=>SECTIONS[k]);
+    const mod2done=MOD2_KEYS.map(k=>SECTIONS[k]);
+
+    const zoneRows=zones.map(z=>{
+      const zu=allU.filter(u=>u.zoneId===z.id);
+      const m1cells=MOD1_KEYS.map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
+      const m2cells=MOD2_KEYS.map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
+      const total=zu.length;
+      return`<tr><td><b>${esc(z.name)}</b></td>${m1cells}${m2cells}<td><b>${total}</b></td></tr>`;
+    }).join('');
+
+    matrixHTML=`<div class="card mt16">
+      <div class="cardHd">Zone × Section Submission Matrix — ${CURMONTH}
+        <span class="pill ${pct>=80?'pg':pct>=50?'pa':'pr'}">${pct}% covered</span>
+      </div>
+      <div class="matrixWrap"><table class="matrix">
+        <thead><tr><th>Zone</th>${MOD1_KEYS.map(k=>`<th title="${SECTIONS[k].label}">${SECTIONS[k].icon}</th>`).join('')}${MOD2_KEYS.map(k=>`<th title="${SECTIONS[k].label}">${SECTIONS[k].icon}</th>`).join('')}<th>Files</th></tr></thead>
+        <tbody>${zoneRows}</tbody>
+      </table></div>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = at least 1 file uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; Hover icons to see section name</div>
+    </div>`;
+  }
+
+  mc.innerHTML=`
+  <div class="pgTitle">👋 ${esc(CU.name)}</div>
+  <div class="pgSub">${CU.role==='leader'?(CU.zoneName||CU.zoneId):'All Zones'} · ${CURMONTH}</div>
+
+  <div class="statsGrid">
+    <div class="statBox"><div class="stLbl">Files This Month</div><div class="stNum">${uploads.length}</div><div class="stSub">uploaded</div></div>
+    <div class="statBox"><div class="stLbl">Sections Covered</div><div class="stNum">${coveredSections}/${totalSections}</div><div class="stSub">of ${totalSections} required</div></div>
+    <div class="statBox"><div class="stLbl">Module 1</div><div class="stNum" style="color:var(--green)">${m1cov}/${MOD1_KEYS.length}</div><div class="stSub">5S & Workplace</div></div>
+    <div class="statBox"><div class="stLbl">Module 2</div><div class="stNum" style="color:var(--purple)">${m2cov}/${MOD2_KEYS.length}</div><div class="stSub">Operations</div></div>
+  </div>
+
+  <div class="modCard modCard1" onclick="goto('m1_5s')">
+    <div class="modCardTop">
+      <div class="modCardTitle">🏭 Module 1 — 5S & Workplace</div>
+      <span class="pill pg">${m1cov}/${MOD1_KEYS.length} sections</span>
+    </div>
+    <div class="modCardSubs">5S Reports · Visual Management · Gemba Huddle</div>
+    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--green),var(--green-m));width:${Math.round(m1cov/MOD1_KEYS.length*100)}%"></div></div><div class="modPct">${Math.round(m1cov/MOD1_KEYS.length*100)}%</div></div>
+  </div>
+
+  <div class="modCard modCard2" onclick="goto('m2_oee')">
+    <div class="modCardTop">
+      <div class="modCardTitle">📊 Module 2 — Operations Excellence</div>
+      <span class="pill pp">${m2cov}/${MOD2_KEYS.length} sections</span>
+    </div>
+    <div class="modCardSubs">OEE · Skill Matrix · KANBAN · PFMEA · Constraint · MSA · SPC · TPM AM · LPA · Quality Alerts · Kaizen · Projects</div>
+    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--purple),#818cf8);width:${Math.round(m2cov/MOD2_KEYS.length*100)}%"></div></div><div class="modPct">${Math.round(m2cov/MOD2_KEYS.length*100)}%</div></div>
+  </div>
+  ${matrixHTML}`;
+}
+
+// ═══════════════════════════════════════════════════
+// SECTION PAGE (upload + checklist + files)
+// ═══════════════════════════════════════════════════
+async function renderSection(skey){
+  const mc=$('mc');
+  const sec=SECTIONS[skey];
+  const {collection,query,where,getDocs}=window.FS;
+  const isAdmin=CU.role!=='leader';
+  const selMonth=window['_sm_'+skey]||CURMONTH;
+
+  // Fetch uploads for this section
+  let q;
+  if(CU.role==='leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('zoneId','==',CU.zoneId));
+  else q=query(collection(window.DB,'uploads'),where('sectionId','==',skey));
+  const snap=await getDocs(q);
+  const uploads=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadedAt?.seconds||0)-(a.uploadedAt?.seconds||0));
+
+  const allMonths=[...new Set(uploads.map(u=>u.month))].sort().reverse();
+  const monthUps=uploads.filter(u=>u.month===selMonth);
+
+  let zones=[];
+  if(isAdmin){
+    const zSnap=await getDocs(collection(window.DB,'zones'));
+    zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+  }
+
+  const modBand=sec.mod===1?`<span class="modBand modBand1">Module 1 — 5S & Workplace</span>`:`<span class="modBand modBand2">Module 2 — Operations Excellence</span>`;
+
+  // Checklist: which items have notes/files for this month
+  const myNotes=CU.role==='leader'?monthUps.filter(u=>u.zoneId===CU.zoneId):monthUps;
+  const covItems=new Set(myNotes.map(u=>u.checkItem||'').filter(Boolean));
+
+  const uploadSection=CU.role!=='consultant'?`
+  <div class="card">
+    <div class="cardHd">📤 Upload for ${esc(sec.label)} ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:''}
+    </div>
+    <div class="f2"><label>Month</label>
+      <select id="upMon-${skey}">
+        ${MONTHS.map((m,i)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
+      </select>
+    </div>
+    <div class="f2"><label>Which checklist item does this file cover? (optional)</label>
+      <select id="upItem-${skey}">
+        <option value="">— General upload (not specific to one item) —</option>
+        ${sec.required.map((r,i)=>`<option value="${i}">${i+1}. ${esc(r.slice(0,70))}${r.length>70?'...':''}</option>`).join('')}
+      </select>
+    </div>
+    <div class="f2"><label>Note / Observation (optional)</label>
+      <textarea id="upNote-${skey}" rows="2" placeholder="Add context, reference PPT slide, status note..."></textarea>
+    </div>
+    <div class="uploadZone" id="uz-${skey}" onclick="$('ufi-${skey}').click()"
+      ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')"
+      ondrop="dropFiles(event,'${skey}')">
+      <div class="uzIco">📎</div>
+      <p><b>Tap to select files</b> or drag & drop</p>
+      <small>PDF, Excel, Word, Images — any format</small>
+    </div>
+    <input type="file" id="ufi-${skey}" multiple style="display:none" onchange="selFiles(this,'${skey}')">
+    <div id="pList-${skey}"></div>
+    <div class="btnRow">
+      <button class="btn btnP" id="upBtn-${skey}" onclick="doUpload('${skey}')">📤 Upload</button>
+    </div>
+    <div id="upProg-${skey}"></div>
+  </div>`:'' ;
+
+  const checklistCard=`
+  <div class="card">
+    <div class="cardHd">📋 Checklist — ${esc(sec.label)}
+      <span class="pill ${covItems.size>0?'pg':'px'}">${covItems.size}/${sec.required.length} covered</span>
+    </div>
+    <div style="font-size:11px;color:var(--gray3);margin-bottom:10px;">Items exactly as asked by consultant. Upload files for the items that are ready.</div>
+    ${sec.required.map((r,i)=>{
+      const covered=covItems.has(String(i));
+      return`<div class="checkItem">
+        <span class="cIcon">${covered?'✅':'⬜'}</span>
+        <span class="cText"><b>${i+1}.</b> ${esc(r)}</span>
+        <span class="cStatus">${covered?'<span class="pill pg">Done</span>':'<span class="pill px">Pending</span>'}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+
+  const filesSection=isAdmin?`
+  <div class="card">
+    <div class="cardHd">Files from All Zones
+      <select onchange="window['_sm_${skey}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
+        ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    ${zones.map(z=>{
+      const zf=monthUps.filter(u=>u.zoneId===z.id);
+      return`<div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:var(--navy);color:#fff;border-radius:5px;padding:2px 10px;font-size:11px;font-weight:700;">${esc(z.name)}</span>
+          <span class="pill ${zf.length?'pg':'pr'}">${zf.length?zf.length+' file(s)':'⚠ No upload'}</span>
+        </div>
+        ${zf.length?zf.map(u=>fRowHTML(u)).join(''):`<div style="padding:9px 12px;background:var(--red-l);border-radius:6px;font-size:12px;color:var(--red);">No files uploaded for ${selMonth}</div>`}
+      </div>`;
+    }).join('')}
+  </div>`:`
+  <div class="card">
+    <div class="cardHd">Your Uploaded Files
+      <select onchange="window['_sm_${skey}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
+        ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
+      </select>
+    </div>
+    ${monthUps.length?monthUps.map(u=>fRowHTML(u)).join(''):`<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No files for ${selMonth}. Upload using the form above.</div>`}
+  </div>`;
+
+  mc.innerHTML=`
+  <div class="pgTitle">${sec.icon} ${esc(sec.label)}</div>
+  ${modBand}
+  ${uploadSection}
+  ${checklistCard}
+  ${filesSection}`;
+}
+
+function fRowHTML(u){
+  return`<div class="fileRow">
+    <span class="frIco">${fIcon(u.name)}</span>
+    <div class="frInfo">
+      <div class="frName">${esc(u.name)}</div>
+      <div class="frMeta">${bytes(u.size)} · ${u.month} · ${esc(u.zoneName||u.zoneId)} · ${esc(u.uploadedBy)} · ${u.uploadedAt?.toDate?.()?.toLocaleDateString()||u.uploadedAtStr||''}
+        ${u.note?`<br><span style="color:var(--gray4)">📝 ${esc(u.note)}</span>`:''}
+      </div>
+    </div>
+    <div class="frActs">
+      <button class="btnIc" title="Download" onclick="downloadFile('${u.id}','${esc(u.name)}')">⬇️</button>
+      ${CU.role==='admin'||CU.role==='coordinator'||u.uploadedById===CU.id?`<button class="btnIc" title="Delete" onclick="delFile('${u.id}')">🗑️</button>`:''}
+    </div>
+  </div>`;
+}
+
+// ── FILE HANDLERS ──
+function selFiles(inp,sk){
+  if(!pendFiles[sk])pendFiles[sk]=[];
+  Array.from(inp.files).forEach(f=>pendFiles[sk].push({id:uid(),file:f,name:f.name,size:f.size}));
+  renderPend(sk);inp.value='';
+}
+function dropFiles(e,sk){e.preventDefault();$('uz-'+sk)?.classList.remove('drag');if(!pendFiles[sk])pendFiles[sk]=[];Array.from(e.dataTransfer.files).forEach(f=>pendFiles[sk].push({id:uid(),file:f,name:f.name,size:f.size}));renderPend(sk);}
+function renderPend(sk){const el=$('pList-'+sk);if(!el)return;el.innerHTML=(pendFiles[sk]||[]).map(f=>`<div class="pendRow"><span class="pName">${fIcon(f.name)} ${esc(f.name)}</span><span class="pSize">${bytes(f.size)}</span><span class="pRem" onclick="remPend('${sk}','${f.id}')">✕</span></div>`).join('');}
+function remPend(sk,id){if(pendFiles[sk])pendFiles[sk]=pendFiles[sk].filter(f=>f.id!==id);renderPend(sk);}
+
+async function doUpload(sk){
+  const files=pendFiles[sk]||[];
+  if(!files.length){toast('Select files first.');return;}
+  const month=$('upMon-'+sk)?.value||CURMONTH;
+  const checkItem=$('upItem-'+sk)?.value||'';
+  const note=$('upNote-'+sk)?.value||'';
+  const btn=$('upBtn-'+sk);const prog=$('upProg-'+sk);
+  btn.disabled=true;
+
+  const MAX_B64 = 900*1024; // 900KB raw file limit (~1.2MB as base64 fits in Firestore 1MB doc)
+  let uploaded=0;
+
+  for(const pf of files){
+    if(pf.size > MAX_B64){
+      toast(`⚠️ "${pf.name}" is ${bytes(pf.size)} — too large. Max 900KB. Please compress and re-upload.`,5000);
+      prog.innerHTML=`<div style="margin-top:8px;background:var(--amber-l);border:1px solid #f0a040;border-radius:6px;padding:10px 12px;font-size:12px;color:var(--amber);">
+        ⚠️ <b>${esc(pf.name)}</b> skipped — ${bytes(pf.size)} exceeds 900KB limit.<br>
+        Tip: Compress images in the file, or split into smaller parts.
+      </div>`;
+      continue;
+    }
+
+    prog.innerHTML=`<div style="margin-top:8px;background:var(--gray0);border-radius:6px;padding:9px 12px;font-size:12px;">
+      <div style="margin-bottom:4px;color:var(--navy);font-weight:500;">📤 Reading ${esc(pf.name)}...</div>
+      <div class="progWrap"><div class="progBar" style="width:60%"></div></div>
+    </div>`;
+
+    // Convert file to base64
+    const b64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result); // includes data:mime;base64, prefix
+      r.onerror=rej;
+      r.readAsDataURL(pf.file);
+    });
+
+    prog.innerHTML=`<div style="margin-top:8px;background:var(--gray0);border-radius:6px;padding:9px 12px;font-size:12px;">
+      <div style="margin-bottom:4px;color:var(--navy);font-weight:500;">☁️ Saving ${esc(pf.name)} to Firestore...</div>
+      <div class="progWrap"><div class="progBar" style="width:90%"></div></div>
+    </div>`;
+
+    try{
+      const {collection,addDoc,serverTimestamp}=window.FS;
+      await addDoc(collection(window.DB,'uploads'),{
+        sectionId:sk, name:pf.name, size:pf.size, month, checkItem, note,
+        zoneId:CU.zoneId||'', zoneName:CU.zoneName||'',
+        uploadedById:CU.id, uploadedBy:CU.name,
+        fileData:b64,  // stored directly in Firestore
+        uploadedAt:serverTimestamp(), uploadedAtStr:new Date().toLocaleDateString()
+      });
+      uploaded++;
+    }catch(e){
+      toast('Save error: '+e.message);
+    }
+  }
+
+  pendFiles[sk]=[];
+  btn.disabled=false;
+  prog.innerHTML='';
+  if(uploaded>0) toast(`✅ ${uploaded} file(s) saved!`);
+  renderSection(sk);
+}
+async function delFile(id,_unused){
+  if(!confirm('Delete this file?'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'uploads',id));
+  toast('🗑️ Deleted.');render();
+}
