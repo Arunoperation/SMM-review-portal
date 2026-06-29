@@ -519,7 +519,7 @@ async function login(){
     CU={id:d.id,...ud};
     $('loginScr').style.display='none';
     $('appScr').style.display='flex';
-    $('topRole').textContent={admin:'Admin',coordinator:'Coordinator',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
+    $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
     $('topUser').textContent=CU.name;
     const isAdm=CU.role==='admin'||CU.role==='coordinator';
     const isCons=CU.role==='consultant';
@@ -1052,7 +1052,7 @@ async function renderUsers(){
         return `<tr>
           <td><b>${esc(u.name)}</b></td>
           <td><code style="background:var(--gray1);padding:2px 7px;border-radius:4px;font-size:12px;">${esc(u.username)}</code></td>
-          <td><span class="pill ${u.role==='admin'||u.role==='coordinator'?'pb':u.role==='consultant'?'pa':'pg'}">${esc(u.role)}</span></td>
+          <td><span class="pill ${u.role==='admin'||u.role==='coordinator'?'pb':u.role==='consultant'?'pa':'pg'}">${u.role==='coordinator'?'Admin':u.role==='admin'?'Admin':esc(u.role)}</span></td>
           <td>${esc(zone?.name||u.zoneId||'All')}</td>
           <td><button class="btn btn-o btn-sm" onclick='showUserModal(${JSON.stringify({id:u.id,...u})})'>Edit</button> ${u.username!=='arun'?`<button class="btn btn-d btn-sm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
         </tr>`;
@@ -1098,9 +1098,9 @@ function showUserModal(u){
           <div class="f2"><label>Role</label>
             <select id="mR">
               <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
-              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Coordinator (Arun)</option>
+              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Admin / Coordinator</option>
               <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
-              <option value="admin"${u?.role==='admin'?' selected':''}>Admin</option>
+              
             </select>
           </div>
           <div class="f2"><label>Zone</label>
@@ -1336,9 +1336,9 @@ function showUserModal(u){
           <div class="f2"><label>Role</label>
             <select id="mR">
               <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
-              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Coordinator (Arun)</option>
+              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Admin / Coordinator</option>
               <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
-              <option value="admin"${u?.role==='admin'?' selected':''}>Admin</option>
+              
             </select>
           </div>
           <div class="f2"><label>Zone</label>
