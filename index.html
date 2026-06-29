@@ -463,6 +463,9 @@ function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').
 function $(id){return document.getElementById(id);}
 function toast(msg,d=2800){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),d);}
 function closeModal(){$('modRoot').innerHTML='';}
+
+function modal(html){ $('modRoot').innerHTML=html; }
+
 function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'📄',xlsx:'📊',xls:'📊',docx:'📝',doc:'📝',pptx:'📑',ppt:'📑',jpg:'🖼️',jpeg:'🖼️',png:'🖼️',gif:'🖼️',mp4:'🎬',csv:'📋',mp3:'🎵'}[e]||'📎';}
 
 // ─── FIREBASE READY ───
@@ -559,8 +562,12 @@ function render(){
   if(CP==='users'){renderUsers();return;}
   if(CP==='zones'){renderZones();return;}
   if(CP==='modules_admin'){renderModulesAdmin();return;}
-  if(window.SECTIONS[CP]){renderSection(CP);return;}
-  mc.innerHTML='<p>Page not found.</p>';
+  // Check if CP is a known section (from Firestore or defaults)
+  const secKeys = Object.keys(window.SECTIONS||{});
+  if(secKeys.includes(CP) || CP.startsWith('m1_') || CP.startsWith('m2_') || CP.startsWith('m3_')){
+    renderSection(CP);return;
+  }
+  mc.innerHTML='<p style="color:var(--gray3);font-size:13px;padding:40px;text-align:center">Section not found. Try refreshing the page.</p>';
 }
 
 // ═══════════════════════════════════════════════════
@@ -651,10 +658,20 @@ async function renderDash(){
 // ═══════════════════════════════════════════════════
 async function renderSection(skey){
   const mc=$('mc');
-  const sec=window.SECTIONS[skey];
+  // Load section — from cache or Firestore
+  let sec=window.SECTIONS[skey];
+  if(!sec){
+    try{
+      const {doc,getDoc}=window.FS;
+      const snap=await getDoc(doc(window.DB,'sections',skey));
+      if(snap.exists()){sec={id:snap.id,...snap.data()};window.SECTIONS[skey]=sec;}
+    }catch(e){}
+  }
+  if(!sec){mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Section not found.</div>';return;}
   const {collection,query,where,getDocs}=window.FS;
   const isAdmin=CU.role!=='leader';
   const selMonth=window['_sm_'+skey]||CURMONTH;
+
 
   // Fetch uploads for this section
   let q;
@@ -672,7 +689,9 @@ async function renderSection(skey){
     zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
   }
 
-  const modBand=sec.mod===1?`<span class="modBand modBand1">Module 1 — 5S & Workplace</span>`:`<span class="modBand modBand2">Module 2 — Operations Excellence</span>`;
+  const modObj=Object.values(window.MODULES||{}).find(m=>m.order===sec.mod||m.id==='mod'+sec.mod);
+  const modLabel=modObj?modObj.name:('Module '+sec.mod);
+  const modBand=`<span class="modBand" style="background:var(--blue-l);color:var(--blue);display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px">${modLabel}</span>`;
 
   // Checklist: which items have notes/files for this month
   const myNotes=CU.role==='leader'?monthUps.filter(u=>u.zoneId===CU.zoneId):monthUps;
@@ -690,7 +709,7 @@ async function renderSection(skey){
     <div class="f2"><label>Which checklist item does this file cover? (optional)</label>
       <select id="upItem-${skey}">
         <option value="">— General upload (not specific to one item) —</option>
-        ${sec.required.map((r,i)=>`<option value="${i}">${i+1}. ${esc(r.slice(0,70))}${r.length>70?'...':''}</option>`).join('')}
+        ${(sec.required||[]).map((r,i)=>`<option value="${i}">${i+1}. ${esc(r.slice(0,70))}${r.length>70?'...':''}</option>`).join('')}
       </select>
     </div>
     <div class="f2"><label>Note / Observation (optional)</label>
@@ -714,10 +733,10 @@ async function renderSection(skey){
   const checklistCard=`
   <div class="card">
     <div class="cardHd">📋 Checklist — ${esc(sec.label)}
-      <span class="pill ${covItems.size>0?'pg':'px'}">${covItems.size}/${sec.required.length} covered</span>
+      <span class="pill ${covItems.size>0?'pg':'px'}">${covItems.size}/${(sec.required||[]).length} covered</span>
     </div>
     <div style="font-size:11px;color:var(--gray3);margin-bottom:10px;">Items exactly as asked by consultant. Upload files for the items that are ready.</div>
-    ${sec.required.map((r,i)=>{
+    ${(sec.required||[]).map((r,i)=>{
       const covered=covItems.has(String(i));
       return`<div class="checkItem">
         <span class="cIcon">${covered?'✅':'⬜'}</span>
@@ -1018,8 +1037,8 @@ async function renderAllFiles(){
           </div>
         </div>
         <div class="frActions">
-          <a href="${esc(u.downloadUrl)}" target="_blank"><button class="btn-ic">⬇️</button></a>
-          ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btn-ic" onclick="delUpload('${u.id}','${esc(u.storagePath)}')">🗑️</button>`:''}
+          <a href="${esc(u.downloadUrl)}" target="_blank"><button class="btnIc">⬇️</button></a>
+          ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btnIc" onclick="delUpload('${u.id}','${esc(u.storagePath)}')">🗑️</button>`:''}
         </div>
       </div>`;
     }).join(''):`<div style="text-align:center;padding:32px;color:var(--gray3);">No files match the selected filters.</div>`}
@@ -1037,7 +1056,7 @@ async function renderUsers(){
   <div class="pgTitle">👥 Manage Users</div>
   <div class="pgSub">Add leaders for each zone. They will use these credentials to log in.</div>
   <div class="card">
-    <div class="cardHd">All Users <button class="btn btn-p btn-sm" onclick="showUserModal(null)">+ Add User</button></div>
+    <div class="cardHd">All Users <button class="btn btnP btnSm" onclick="showUserModal(null)">+ Add User</button></div>
     <div class="tblWrap"><table class="tbl">
       <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Zone</th><th>Actions</th></tr></thead>
       <tbody>${users.map(u=>{
@@ -1047,7 +1066,7 @@ async function renderUsers(){
           <td><code style="background:var(--gray1);padding:2px 7px;border-radius:4px;font-size:12px;">${esc(u.username)}</code></td>
           <td><span class="pill ${u.role==='admin'||u.role==='coordinator'?'pb':u.role==='consultant'?'pa':'pg'}">${u.role==='coordinator'?'Admin':u.role==='admin'?'Admin':esc(u.role)}</span></td>
           <td>${esc(zone?.name||u.zoneId||'All')}</td>
-          <td><button class="btn btn-o btn-sm" onclick='showUserModal(${JSON.stringify({id:u.id,...u})})'>Edit</button> ${u.username!=='arun'?`<button class="btn btn-d btn-sm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
+          <td><button class="btn btnO btnSm" onclick='showUserModal(${JSON.stringify({id:u.id,...u})})'>Edit</button> ${u.username!=='arun'?`<button class="btn btnD btnSm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>
@@ -1064,12 +1083,12 @@ async function renderZones(){
   <div class="pgTitle">⚙️ Settings — Zones</div>
   <div class="pgSub">Manage zones. Each zone corresponds to a plant area.</div>
   <div class="card">
-    <div class="cardHd">Zones <button class="btn btn-p btn-sm" onclick="showZoneModal(null)">+ Add Zone</button></div>
+    <div class="cardHd">Zones <button class="btn btnP btnSm" onclick="showZoneModal(null)">+ Add Zone</button></div>
     <div class="tblWrap"><table class="tbl">
       <thead><tr><th>Zone Name</th><th>Description</th><th>Actions</th></tr></thead>
       <tbody>${zones.map(z=>`<tr>
         <td><b>${esc(z.name)}</b></td><td>${esc(z.desc||'')}</td>
-        <td><button class="btn btn-o btn-sm" onclick='showZoneModal(${JSON.stringify({id:z.id,...z})})'>Edit</button> <button class="btn btn-d btn-sm" onclick="delZone('${z.id}')">Del</button></td>
+        <td><button class="btn btnO btnSm" onclick='showZoneModal(${JSON.stringify({id:z.id,...z})})'>Edit</button> <button class="btn btnD btnSm" onclick="delZone('${z.id}')">Del</button></td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
@@ -1081,9 +1100,9 @@ function showUserModal(u){
     const {collection,getDocs}=window.FS;
     const zSnap=await getDocs(collection(window.DB,'zones'));
     zSnap.docs.forEach(d=>zones.push({id:d.id,...d.data()}));
-    modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
       <div class="mBox">
-        <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
+        <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
         <div class="mBody">
           <div class="f2"><label>Full Name</label><input id="mN" value="${esc(u?.name||'')}" placeholder="e.g. Shiv Mohan"></div>
           <div class="f2"><label>Username</label><input id="mU" value="${esc(u?.username||'')}" placeholder="e.g. shiv_z3"></div>
@@ -1104,8 +1123,8 @@ function showUserModal(u){
           </div>
         </div>
         <div class="mFoot">
-          <button class="btn btn-o" onclick="closeModal()">Cancel</button>
-          <button class="btn btn-p" onclick="saveUser('${u?.id||''}')">Save</button>
+          <button class="btn btnO" onclick="closeModal()">Cancel</button>
+          <button class="btn btnP" onclick="saveUser('${u?.id||''}')">Save</button>
         </div>
       </div>
     </div>`);
@@ -1147,14 +1166,14 @@ async function delUser(id){
 }
 
 function showZoneModal(z){
-  modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
     <div class="mBox">
-      <div class="mHead"><h3>${z?'Edit Zone':'Add Zone'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
+      <div class="mHead"><h3>${z?'Edit Zone':'Add Zone'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
       <div class="mBody">
         <div class="f2"><label>Zone Name</label><input id="zN" value="${esc(z?.name||'')}" placeholder="e.g. Zone 3"></div>
         <div class="f2"><label>Description</label><input id="zD" value="${esc(z?.desc||'')}" placeholder="e.g. Dewax & Casting"></div>
       </div>
-      <div class="mFoot"><button class="btn btn-o" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="saveZone('${z?.id||''}')">Save</button></div>
+      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveZone('${z?.id||''}')">Save</button></div>
     </div>
   </div>`);
 }
@@ -1313,42 +1332,7 @@ Be specific. Use zone names. Flag critical missing items clearly. Keep it profes
   btn.disabled=false;
 }
 
-function showUserModal(u){
-  const zones=[];
-  (async()=>{
-    const {collection,getDocs}=window.FS;
-    const zSnap=await getDocs(collection(window.DB,'zones'));
-    zSnap.docs.forEach(d=>zones.push({id:d.id,...d.data()}));
-    modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
-      <div class="mBox">
-        <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
-        <div class="mBody">
-          <div class="f2"><label>Full Name</label><input id="mN" value="${esc(u?.name||'')}" placeholder="e.g. Shiv Mohan"></div>
-          <div class="f2"><label>Username</label><input id="mU" value="${esc(u?.username||'')}" placeholder="e.g. shiv_z3"></div>
-          <div class="f2"><label>Password</label><input id="mP" type="text" value="${esc(u?.password||'')}" placeholder="Set a password"></div>
-          <div class="f2"><label>Role</label>
-            <select id="mR">
-              <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
-              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Admin / Coordinator</option>
-              <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
-              
-            </select>
-          </div>
-          <div class="f2"><label>Zone</label>
-            <select id="mZ">
-              <option value="">— All Zones (for Admin/Consultant) —</option>
-              ${zones.map(z=>`<option value="${z.id}"${u?.zoneId===z.id?' selected':''}>${esc(z.name)} — ${esc(z.desc||'')}</option>`).join('')}
-            </select>
-          </div>
-        </div>
-        <div class="mFoot">
-          <button class="btn btn-o" onclick="closeModal()">Cancel</button>
-          <button class="btn btn-p" onclick="saveUser('${u?.id||''}')">Save</button>
-        </div>
-      </div>
-    </div>`);
-  })();
-}
+
 
 
 // ════════════════════════════════════════════════════
@@ -1626,6 +1610,19 @@ try {
   console.error('Firebase error:', e);
   document.getElementById('loadScr').style.display='none';
   document.getElementById('loginScr').style.display='flex';
+}
+
+async function downloadFile(uploadId, filename){
+  try{
+    const {doc,getDoc}=window.FS;
+    const snap=await getDoc(doc(window.DB,'uploads',uploadId));
+    if(!snap.exists()){toast('File not found.');return;}
+    const b64=snap.data().fileData;
+    if(!b64){toast('No file data stored.');return;}
+    const a=document.createElement('a');
+    a.href=b64; a.download=filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  }catch(e){toast('Download error: '+e.message);}
 }
 </script>
 </body>
