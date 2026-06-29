@@ -277,33 +277,7 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
   </div>
   <div class="shell">
     <div class="sidebar" id="sideEl">
-      <div class="siGrp">Overview</div>
-      <div class="siItem act" data-p="dash"><span class="siIcon">🏠</span>Dashboard</div>
-
-      <div class="siGrp" style="color:var(--green)">Module 1 — 5S & Workplace</div>
-      <div class="siItem" data-p="m1_5s" data-mod="1"><span class="siIcon">🏭</span>5S Reports</div>
-      <div class="siItem" data-p="m1_vm" data-mod="1"><span class="siIcon">📋</span>Visual Management</div>
-      <div class="siItem" data-p="m1_gemba" data-mod="1"><span class="siIcon">👣</span>Gemba Huddle</div>
-
-      <div class="siGrp" style="color:var(--purple)">Module 2 — Operations</div>
-      <div class="siItem" data-p="m2_oee" data-mod="2"><span class="siIcon">📊</span>OEE</div>
-      <div class="siItem" data-p="m2_skill" data-mod="2"><span class="siIcon">🎓</span>Skill Matrix</div>
-      <div class="siItem" data-p="m2_kanban" data-mod="2"><span class="siIcon">🔄</span>KANBAN</div>
-      <div class="siItem" data-p="m2_pfmea" data-mod="2"><span class="siIcon">⚠️</span>PFMEA</div>
-      <div class="siItem" data-p="m2_constraint" data-mod="2"><span class="siIcon">🔩</span>Constraint Mgmt</div>
-      <div class="siItem" data-p="m2_msa" data-mod="2"><span class="siIcon">📐</span>MSA</div>
-      <div class="siItem" data-p="m2_spc" data-mod="2"><span class="siIcon">📈</span>SPC</div>
-      <div class="siItem" data-p="m2_tpm" data-mod="2"><span class="siIcon">🔧</span>TPM AM</div>
-      <div class="siItem" data-p="m2_lpa" data-mod="2"><span class="siIcon">🔍</span>Layered Audits</div>
-      <div class="siItem" data-p="m2_qa" data-mod="2"><span class="siIcon">🚨</span>Quality Alerts</div>
-      <div class="siItem" data-p="m2_kaizen" data-mod="2"><span class="siIcon">💡</span>Kaizen Events</div>
-      <div class="siItem" data-p="m2_proj" data-mod="2"><span class="siIcon">📁</span>Master Projects</div>
-
-      <div class="siGrp" id="siAdmGrp" style="display:none">Admin</div>
-      <div class="siItem hidden" data-p="ai_sum" id="siAI"><span class="siIcon">🤖</span>AI Summaries</div>
-      <div class="siItem hidden" data-p="all_files" id="siFiles"><span class="siIcon">📂</span>All Files</div>
-      <div class="siItem hidden" data-p="users" id="siUsers"><span class="siIcon">👥</span>Users</div>
-      <div class="siItem hidden" data-p="zones" id="siZones"><span class="siIcon">🗂️</span>Zones</div>
+      <div id="sidebarContent"></div>
     </div>
     <div class="mainArea"><div class="mainWrap" id="mc"></div></div>
   </div>
@@ -317,7 +291,8 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
 // ═══════════════════════════════════════════════════
 // MODULE STRUCTURE — exactly from consultant report
 // ═══════════════════════════════════════════════════
-const SECTIONS = {
+// ══ DEFAULT SECTIONS (used to seed Firestore on first run) ══
+const DEFAULT_SECTIONS = {
   // ── MODULE 1: 5S & WORKPLACE ─────────────────────
   m1_5s: {
     mod:1, label:'5S Reports', icon:'🏭',
@@ -465,11 +440,16 @@ const SECTIONS = {
     ]
   },
 };
+;
 
-const MOD1_KEYS = ['m1_5s','m1_vm','m1_gemba'];
-const MOD2_KEYS = ['m2_oee','m2_skill','m2_kanban','m2_pfmea','m2_constraint','m2_msa','m2_spc','m2_tpm','m2_lpa','m2_qa','m2_kaizen','m2_proj'];
-const ALL_KEYS  = [...MOD1_KEYS, ...MOD2_KEYS];
+// Live sections loaded from Firestore — updated by loadSections()
+window.SECTIONS = {...DEFAULT_SECTIONS};
+window.MODULES = {}; // moduleId → {id, name, order}
 
+// Helpers that work with dynamic sections
+function getSectionKeys(){ return Object.keys(window.SECTIONS); }
+function getModKeys(modNum){ return getSectionKeys().filter(k=>window.SECTIONS[k].mod===modNum); }
+function getAllModNums(){ return [...new Set(getSectionKeys().map(k=>window.SECTIONS[k].mod))].sort(); }
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NOW=new Date();
 const CURMONTH=`${MONTHS[NOW.getMonth()]}-${String(NOW.getFullYear()).slice(-2)}`;
@@ -488,7 +468,7 @@ function fIcon(n){const e=(n||'').split('.').pop().toLowerCase();return{pdf:'�
 // ─── FIREBASE READY ───
 
 
-// ─── SEED ───
+// ─── SEED + DYNAMIC SECTION LOADER ───
 async function seedIfEmpty(){
   const {collection,getDocs,doc,setDoc}=window.FS;
   const snap=await getDocs(collection(window.DB,'users'));
@@ -496,7 +476,32 @@ async function seedIfEmpty(){
     await setDoc(doc(collection(window.DB,'users')),{name:'Arun (Coordinator)',username:'arun',password:'arun123',role:'coordinator',zoneId:'',zoneName:'All Zones'});
     const zones=[{name:'Zone 1',desc:'Pattern Moulding & Assembly'},{name:'Zone 2',desc:'Wax Dipping & Shell Building'},{name:'Zone 3',desc:'Dewax & Casting'},{name:'Zone 4',desc:'Knockout & Fettling'},{name:'Zone 5',desc:'Heat Treatment'},{name:'Zone 6',desc:'NDT / Quality'},{name:'Zone 7',desc:'Machining / CNC'},{name:'Zone 8',desc:'Dispatch & Packing'}];
     for(const z of zones) await setDoc(doc(collection(window.DB,'zones')),z);
+    // Seed modules
+    const mods=[{id:'mod1',name:'5S & Workplace',colorKey:'green',order:1},{id:'mod2',name:'Operations Excellence',colorKey:'purple',order:2}];
+    for(const m of mods) await setDoc(doc(window.DB,'modules',m.id),m);
+    // Seed sections from defaults
+    for(const [sid,sec] of Object.entries(DEFAULT_SECTIONS)){
+      await setDoc(doc(window.DB,'sections',sid),{...sec,id:sid});
+    }
   }
+  await loadSectionsAndModules();
+}
+
+async function loadSectionsAndModules(){
+  try{
+    const {collection,getDocs}=window.FS;
+    const [secSnap,modSnap]=await Promise.all([
+      getDocs(collection(window.DB,'sections')),
+      getDocs(collection(window.DB,'modules'))
+    ]);
+    if(!secSnap.empty){
+      window.SECTIONS={};
+      secSnap.docs.forEach(d=>{const dat=d.data();window.SECTIONS[d.id]={...dat,id:d.id};});
+    }
+    window.MODULES={};
+    modSnap.docs.forEach(d=>window.MODULES[d.id]={...d.data(),id:d.id});
+  }catch(e){console.warn('loadSections error:',e);}
+  buildSidebar();
 }
 
 // ─── AUTH ───
@@ -522,7 +527,7 @@ async function login(){
       $('siAdmGrp').style.display='';
       $('siAI').classList.remove('hidden');
       $('siFiles').classList.remove('hidden');
-      if(isAdm){$('siUsers').classList.remove('hidden');$('siZones').classList.remove('hidden');}
+      if(isAdm){$('siUsers').classList.remove('hidden');$('siZones').classList.remove('hidden');$('siMods')?.classList.remove('hidden');}
     }
     buildBnav();
     goto('dash');
@@ -545,10 +550,9 @@ function buildBnav(){
 $('sideEl').addEventListener('click',e=>{const it=e.target.closest('.siItem[data-p]');if(it)goto(it.dataset.p);});
 function goto(p){
   CP=p;
-  document.querySelectorAll('.siItem').forEach(el=>el.classList.remove('act'));
-  const si=document.querySelector(`.siItem[data-p="${p}"]`);if(si)si.classList.add('act');
   document.querySelectorAll('.bnavItem').forEach(el=>el.classList.remove('act'));
   const bn=$('bn-'+p);if(bn)bn.classList.add('act');
+  buildSidebar(); // rebuilds sidebar with correct active state
   render();
 }
 
@@ -561,7 +565,8 @@ function render(){
   if(CP==='all_files'){renderAllFiles();return;}
   if(CP==='users'){renderUsers();return;}
   if(CP==='zones'){renderZones();return;}
-  if(SECTIONS[CP]){renderSection(CP);return;}
+  if(CP==='modules_admin'){renderModulesAdmin();return;}
+  if(window.SECTIONS[CP]){renderSection(CP);return;}
   mc.innerHTML='<p>Page not found.</p>';
 }
 
@@ -580,12 +585,12 @@ async function renderDash(){
   const uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
 
   const coveredSections=new Set(uploads.map(u=>u.sectionId)).size;
-  const totalSections=ALL_KEYS.length;
+  const totalSections=getSectionKeys().length;
   const pct=Math.round(coveredSections/totalSections*100);
 
   // Module coverage
-  const m1cov=MOD1_KEYS.filter(k=>uploads.find(u=>u.sectionId===k)).length;
-  const m2cov=MOD2_KEYS.filter(k=>uploads.find(u=>u.sectionId===k)).length;
+  const m1cov=getModKeys(1).filter(k=>uploads.find(u=>u.sectionId===k)).length;
+  const m2cov=getModKeys(2).filter(k=>uploads.find(u=>u.sectionId===k)).length;
 
   // Zone matrix (admin only)
   let matrixHTML='';
@@ -594,13 +599,13 @@ async function renderDash(){
     const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
     const allUQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
     const allU=(await getDocs(allUQ)).docs.map(d=>({id:d.id,...d.data()}));
-    const mod1done=MOD1_KEYS.map(k=>SECTIONS[k]);
-    const mod2done=MOD2_KEYS.map(k=>SECTIONS[k]);
+    const mod1done=getModKeys(1).map(k=>window.SECTIONS[k]);
+    const mod2done=getModKeys(2).map(k=>window.SECTIONS[k]);
 
     const zoneRows=zones.map(z=>{
       const zu=allU.filter(u=>u.zoneId===z.id);
-      const m1cells=MOD1_KEYS.map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
-      const m2cells=MOD2_KEYS.map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
+      const m1cells=getModKeys(1).map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
+      const m2cells=getModKeys(2).map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
       const total=zu.length;
       return`<tr><td><b>${esc(z.name)}</b></td>${m1cells}${m2cells}<td><b>${total}</b></td></tr>`;
     }).join('');
@@ -610,7 +615,7 @@ async function renderDash(){
         <span class="pill ${pct>=80?'pg':pct>=50?'pa':'pr'}">${pct}% covered</span>
       </div>
       <div class="matrixWrap"><table class="matrix">
-        <thead><tr><th>Zone</th>${MOD1_KEYS.map(k=>`<th title="${SECTIONS[k].label}">${SECTIONS[k].icon}</th>`).join('')}${MOD2_KEYS.map(k=>`<th title="${SECTIONS[k].label}">${SECTIONS[k].icon}</th>`).join('')}<th>Files</th></tr></thead>
+        <thead><tr><th>Zone</th>${getModKeys(1).map(k=>`<th title="${window.SECTIONS[k].label}">${window.SECTIONS[k].icon}</th>`).join('')}${getModKeys(2).map(k=>`<th title="${window.SECTIONS[k].label}">${window.SECTIONS[k].icon}</th>`).join('')}<th>Files</th></tr></thead>
         <tbody>${zoneRows}</tbody>
       </table></div>
       <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = at least 1 file uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; Hover icons to see section name</div>
@@ -624,26 +629,26 @@ async function renderDash(){
   <div class="statsGrid">
     <div class="statBox"><div class="stLbl">Files This Month</div><div class="stNum">${uploads.length}</div><div class="stSub">uploaded</div></div>
     <div class="statBox"><div class="stLbl">Sections Covered</div><div class="stNum">${coveredSections}/${totalSections}</div><div class="stSub">of ${totalSections} required</div></div>
-    <div class="statBox"><div class="stLbl">Module 1</div><div class="stNum" style="color:var(--green)">${m1cov}/${MOD1_KEYS.length}</div><div class="stSub">5S & Workplace</div></div>
-    <div class="statBox"><div class="stLbl">Module 2</div><div class="stNum" style="color:var(--purple)">${m2cov}/${MOD2_KEYS.length}</div><div class="stSub">Operations</div></div>
+    <div class="statBox"><div class="stLbl">Module 1</div><div class="stNum" style="color:var(--green)">${m1cov}/${getModKeys(1).length}</div><div class="stSub">5S & Workplace</div></div>
+    <div class="statBox"><div class="stLbl">Module 2</div><div class="stNum" style="color:var(--purple)">${m2cov}/${getModKeys(2).length}</div><div class="stSub">Operations</div></div>
   </div>
 
   <div class="modCard modCard1" onclick="goto('m1_5s')">
     <div class="modCardTop">
       <div class="modCardTitle">🏭 Module 1 — 5S & Workplace</div>
-      <span class="pill pg">${m1cov}/${MOD1_KEYS.length} sections</span>
+      <span class="pill pg">${m1cov}/${getModKeys(1).length} sections</span>
     </div>
     <div class="modCardSubs">5S Reports · Visual Management · Gemba Huddle</div>
-    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--green),var(--green-m));width:${Math.round(m1cov/MOD1_KEYS.length*100)}%"></div></div><div class="modPct">${Math.round(m1cov/MOD1_KEYS.length*100)}%</div></div>
+    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--green),var(--green-m));width:${Math.round(m1cov/getModKeys(1).length*100)}%"></div></div><div class="modPct">${Math.round(m1cov/getModKeys(1).length*100)}%</div></div>
   </div>
 
   <div class="modCard modCard2" onclick="goto('m2_oee')">
     <div class="modCardTop">
       <div class="modCardTitle">📊 Module 2 — Operations Excellence</div>
-      <span class="pill pp">${m2cov}/${MOD2_KEYS.length} sections</span>
+      <span class="pill pp">${m2cov}/${getModKeys(2).length} sections</span>
     </div>
     <div class="modCardSubs">OEE · Skill Matrix · KANBAN · PFMEA · Constraint · MSA · SPC · TPM AM · LPA · Quality Alerts · Kaizen · Projects</div>
-    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--purple),#818cf8);width:${Math.round(m2cov/MOD2_KEYS.length*100)}%"></div></div><div class="modPct">${Math.round(m2cov/MOD2_KEYS.length*100)}%</div></div>
+    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--purple),#818cf8);width:${Math.round(m2cov/getModKeys(2).length*100)}%"></div></div><div class="modPct">${Math.round(m2cov/getModKeys(2).length*100)}%</div></div>
   </div>
   ${matrixHTML}`;
 }
@@ -653,7 +658,7 @@ async function renderDash(){
 // ═══════════════════════════════════════════════════
 async function renderSection(skey){
   const mc=$('mc');
-  const sec=SECTIONS[skey];
+  const sec=window.SECTIONS[skey];
   const {collection,query,where,getDocs}=window.FS;
   const isAdmin=CU.role!=='leader';
   const selMonth=window['_sm_'+skey]||CURMONTH;
@@ -923,6 +928,654 @@ async function saveResetPassword(userId,userName){
   closeModal(); toast('✅ Password reset for '+userName+'. Inform them of the new password.');
 }
 
+async function renderAI(){
+  const mc=$('mc');
+  const {collection,query,where,getDocs,orderBy}=window.FS;
+  const savedKey=localStorage.getItem('smm_aikey')||'';
+
+  // Fetch existing summaries
+  const sumSnap=await getDocs(collection(window.DB,'summaries'));
+  const sums=sumSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.createdAt?.seconds||0)-(a.createdAt?.seconds||0));
+
+  const isCoord=CU.role==='admin'||CU.role==='coordinator';
+
+  mc.innerHTML=`
+  <div class="pgTitle">📝 AI Summaries & Gap Analysis</div>
+  <div class="pgSub">Claude AI reads all uploaded file metadata and generates zone-wise summaries with gap highlights. Consultants and coordinators can view; coordinators can generate new ones.</div>
+
+  ${isCoord?`
+  <div class="aiPanel">
+    <h3>🤖 Claude AI Agent</h3>
+    <div class="aiSub">Generates a full zone-wise summary + gap analysis for any month. Saved to Firestore — visible to everyone including the consultant.</div>
+    <div class="aiInput">
+      <input type="password" id="aiKeyInp" value="${savedKey}" placeholder="Anthropic API key: sk-ant-api03-...">
+      <button class="aiBtn" onclick="saveAIKey()">Save Key</button>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+      <select id="aiMonSel" style="padding:8px 12px;border-radius:6px;border:none;background:rgba(255,255,255,.15);color:#fff;font-size:13px;">
+        ${[CURMONTH,...MONTHS.map((_,i)=>{const d=new Date(NOW.getFullYear(),NOW.getMonth()-i-1,1);return`${MONTHS[d.getMonth()]}-${String(d.getFullYear()).slice(-2)}`;})].map(m=>`<option value="${m}">${m}</option>`).join('')}
+      </select>
+      <button class="aiBtn" id="btnGenSum" onclick="generateSummary()">🔍 Generate Summary for Selected Month</button>
+    </div>
+    <div id="genStatus"></div>
+  </div>`:''}
+
+  <div class="card">
+    <div class="cardHd">Saved Summaries (visible to all roles)</div>
+    ${sums.length?sums.map(s=>summaryCardHTML(s)).join(''):`<div style="text-align:center;padding:28px;color:var(--gray3);">${isCoord?'No summaries generated yet. Use the AI agent above.':'No summaries available yet. Ask the coordinator to generate one.'}</div>`}
+  </div>`;
+}
+
+async function renderAllFiles(){
+  const mc=$('mc');
+  const {collection,query,where,getDocs}=window.FS;
+  const selZone=window._rvZ||'all';
+  const selFolder=window._rvF||'all';
+  const selMonth=window._rvM||CURMONTH;
+
+  const zSnap=await getDocs(collection(window.DB,'zones'));
+  const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  let q=collection(window.DB,'uploads');
+  const snap=await getDocs(q);
+  let uploads=snap.docs.map(d=>({id:d.id,...d.data()}));
+  if(selZone!=='all') uploads=uploads.filter(u=>u.zoneId===selZone);
+  if(selFolder!=='all') uploads=uploads.filter(u=>u.folderId===selFolder);
+  if(selMonth!=='all') uploads=uploads.filter(u=>u.month===selMonth);
+  uploads.sort((a,b)=>(b.uploadedAt?.seconds||0)-(a.uploadedAt?.seconds||0));
+  const allMonths=[...new Set(snap.docs.map(d=>d.data().month))].sort().reverse();
+
+  mc.innerHTML=`
+  <div class="pgTitle">📂 All Uploaded Files</div>
+  <div class="pgSub">Filter, download, and manage files from all zones.</div>
+  <div class="card">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="f2" style="margin:0;min-width:120px;"><label>Zone</label>
+        <select onchange="window._rvZ=this.value;renderReview()">
+          <option value="all">All Zones</option>
+          ${zones.map(z=>`<option value="${z.id}"${selZone===z.id?' selected':''}>${esc(z.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f2" style="margin:0;min-width:150px;"><label>Folder</label>
+        <select onchange="window._rvF=this.value;renderReview()">
+          <option value="all">All Folders</option>
+          ${FOLDERS.map(f=>`<option value="${f.id}"${selFolder===f.id?' selected':''}>${f.icon} ${esc(f.name)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="f2" style="margin:0;min-width:100px;"><label>Month</label>
+        <select onchange="window._rvM=this.value;renderReview()">
+          <option value="all">All</option>
+          ${allMonths.map(m=>`<option value="${m}"${selMonth===m?' selected':''}>${m}</option>`).join('')}
+        </select>
+      </div>
+      <span style="font-size:12px;color:var(--gray3);padding-bottom:2px;">${uploads.length} file(s)</span>
+    </div>
+  </div>
+  <div class="card">
+    ${uploads.length?uploads.map(u=>{
+      const f=FOLDERS.find(x=>x.id===u.folderId);
+      const z=zones.find(x=>x.id===u.zoneId);
+      return `<div class="fileRow">
+        <span class="frIcon">${fileIcon(u.name)}</span>
+        <div class="frInfo">
+          <div class="frName">${esc(u.name)}</div>
+          <div class="frMeta">
+            <span class="pill pb" style="margin-right:4px;">${esc(z?.name||u.zoneId)}</span>
+            ${f?f.icon+' '+esc(f.name):''} · ${u.month} · ${esc(u.uploadedBy)} · ${u.uploadedAt?.toDate?.()?.toLocaleDateString()||u.uploadedAtStr||''}
+          </div>
+        </div>
+        <div class="frActions">
+          <a href="${esc(u.downloadUrl)}" target="_blank"><button class="btn-ic">⬇️</button></a>
+          ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btn-ic" onclick="delUpload('${u.id}','${esc(u.storagePath)}')">🗑️</button>`:''}
+        </div>
+      </div>`;
+    }).join(''):`<div style="text-align:center;padding:32px;color:var(--gray3);">No files match the selected filters.</div>`}
+  </div>`;
+}
+
+async function renderUsers(){
+  const mc=$('mc');
+  const {collection,getDocs}=window.FS;
+  const [uSnap,zSnap]=await Promise.all([getDocs(collection(window.DB,'users')),getDocs(collection(window.DB,'zones'))]);
+  const users=uSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  mc.innerHTML=`
+  <div class="pgTitle">👥 Manage Users</div>
+  <div class="pgSub">Add leaders for each zone. They will use these credentials to log in.</div>
+  <div class="card">
+    <div class="cardHd">All Users <button class="btn btn-p btn-sm" onclick="showUserModal(null)">+ Add User</button></div>
+    <div class="tblWrap"><table class="tbl">
+      <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Zone</th><th>Actions</th></tr></thead>
+      <tbody>${users.map(u=>{
+        const zone=zones.find(z=>z.id===u.zoneId);
+        return `<tr>
+          <td><b>${esc(u.name)}</b></td>
+          <td><code style="background:var(--gray1);padding:2px 7px;border-radius:4px;font-size:12px;">${esc(u.username)}</code></td>
+          <td><span class="pill ${u.role==='admin'||u.role==='coordinator'?'pb':u.role==='consultant'?'pa':'pg'}">${esc(u.role)}</span></td>
+          <td>${esc(zone?.name||u.zoneId||'All')}</td>
+          <td><button class="btn btn-o btn-sm" onclick='showUserModal(${JSON.stringify({id:u.id,...u})})'>Edit</button> ${u.username!=='arun'?`<button class="btn btn-d btn-sm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
+        </tr>`;
+      }).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+async function renderZones(){
+  const mc=$('mc');
+  const {collection,getDocs}=window.FS;
+  const zSnap=await getDocs(collection(window.DB,'zones'));
+  const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  mc.innerHTML=`
+  <div class="pgTitle">⚙️ Settings — Zones</div>
+  <div class="pgSub">Manage zones. Each zone corresponds to a plant area.</div>
+  <div class="card">
+    <div class="cardHd">Zones <button class="btn btn-p btn-sm" onclick="showZoneModal(null)">+ Add Zone</button></div>
+    <div class="tblWrap"><table class="tbl">
+      <thead><tr><th>Zone Name</th><th>Description</th><th>Actions</th></tr></thead>
+      <tbody>${zones.map(z=>`<tr>
+        <td><b>${esc(z.name)}</b></td><td>${esc(z.desc||'')}</td>
+        <td><button class="btn btn-o btn-sm" onclick='showZoneModal(${JSON.stringify({id:z.id,...z})})'>Edit</button> <button class="btn btn-d btn-sm" onclick="delZone('${z.id}')">Del</button></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+}
+
+function showUserModal(u){
+  const zones=[];
+  (async()=>{
+    const {collection,getDocs}=window.FS;
+    const zSnap=await getDocs(collection(window.DB,'zones'));
+    zSnap.docs.forEach(d=>zones.push({id:d.id,...d.data()}));
+    modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+      <div class="mBox">
+        <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
+        <div class="mBody">
+          <div class="f2"><label>Full Name</label><input id="mN" value="${esc(u?.name||'')}" placeholder="e.g. Shiv Mohan"></div>
+          <div class="f2"><label>Username</label><input id="mU" value="${esc(u?.username||'')}" placeholder="e.g. shiv_z3"></div>
+          <div class="f2"><label>Password</label><input id="mP" type="text" value="${esc(u?.password||'')}" placeholder="Set a password"></div>
+          <div class="f2"><label>Role</label>
+            <select id="mR">
+              <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
+              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Coordinator (Arun)</option>
+              <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
+              <option value="admin"${u?.role==='admin'?' selected':''}>Admin</option>
+            </select>
+          </div>
+          <div class="f2"><label>Zone</label>
+            <select id="mZ">
+              <option value="">— All Zones (for Admin/Consultant) —</option>
+              ${zones.map(z=>`<option value="${z.id}"${u?.zoneId===z.id?' selected':''}>${esc(z.name)} — ${esc(z.desc||'')}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="mFoot">
+          <button class="btn btn-o" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-p" onclick="saveUser('${u?.id||''}')">Save</button>
+        </div>
+      </div>
+    </div>`);
+  })();
+}
+
+async function saveUser(editId){
+  const name=$('mN').value.trim();
+  const username=$('mU').value.trim().toLowerCase();
+  const password=$('mP').value.trim();
+  const role=$('mR').value;
+  const zoneId=$('mZ').value;
+  if(!name||!username||!password){toast('Fill all fields.');return;}
+  const {collection,doc,setDoc,getDocs,query,where}=window.FS;
+
+  let zoneName='';
+  if(zoneId){
+    const zSnap=await getDocs(query(collection(window.DB,'zones'),where('__name__','==',zoneId)));
+    if(!zSnap.empty) zoneName=zSnap.docs[0].data().name;
+  }
+
+  const data={name,username,password,role,zoneId,zoneName};
+  if(editId){
+    await setDoc(doc(window.DB,'users',editId),data,{merge:true});
+  } else {
+    // check duplicate username
+    const ex=await getDocs(query(collection(window.DB,'users'),where('username','==',username)));
+    if(!ex.empty){toast('Username already exists!');return;}
+    await setDoc(doc(collection(window.DB,'users')),data);
+  }
+  closeModal();toast('✅ User saved.');renderUsers();
+}
+
+async function delUser(id){
+  if(!confirm('Delete this user?'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'users',id));
+  toast('Deleted.');renderUsers();
+}
+
+function showZoneModal(z){
+  modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    <div class="mBox">
+      <div class="mHead"><h3>${z?'Edit Zone':'Add Zone'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div class="f2"><label>Zone Name</label><input id="zN" value="${esc(z?.name||'')}" placeholder="e.g. Zone 3"></div>
+        <div class="f2"><label>Description</label><input id="zD" value="${esc(z?.desc||'')}" placeholder="e.g. Dewax & Casting"></div>
+      </div>
+      <div class="mFoot"><button class="btn btn-o" onclick="closeModal()">Cancel</button><button class="btn btn-p" onclick="saveZone('${z?.id||''}')">Save</button></div>
+    </div>
+  </div>`);
+}
+
+async function saveZone(editId){
+  const name=$('zN').value.trim();
+  const desc=$('zD').value.trim();
+  if(!name){toast('Enter zone name.');return;}
+  const {collection,doc,setDoc}=window.FS;
+  if(editId) await setDoc(doc(window.DB,'zones',editId),{name,desc},{merge:true});
+  else await setDoc(doc(collection(window.DB,'zones')),{name,desc});
+  closeModal();toast('✅ Zone saved.');renderSettings();
+}
+
+async function delZone(id){
+  if(!confirm('Delete zone?'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'zones',id));
+  toast('Deleted.');renderSettings();
+}
+
+function summaryCardHTML(s){
+  const date=s.createdAt?.toDate?.()?.toLocaleDateString()||s.createdAtStr||'';
+  return `<div class="summaryCard">
+    <div class="summaryCardHead">
+      <div>
+        <h4>📊 ${esc(s.month)} — ${esc(s.title||'Zone Summary')}</h4>
+        <div class="smeta">Generated ${date} by ${esc(s.generatedBy)}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        ${s.totalFiles!==undefined?`<span class="pill pg">${s.totalFiles} files</span>`:''}
+        ${s.totalGaps!==undefined?`<span class="pill ${s.totalGaps>0?'pr':'pg'}">${s.totalGaps} gaps</span>`:''}
+      </div>
+    </div>
+    <div class="summaryCardBody">${esc(s.text).replace(/\n/g,'<br>').replace(/\*\*(.*?)\*\*/g,'<b>$1</b>').replace(/#{1,3} (.*)/g,'<br><b>$1</b><br>')}</div>
+    ${s.gapBadges?.length?`<div style="padding:10px 16px;border-top:1px solid var(--gray1);">${s.gapBadges.map(g=>`<span class="gapBadge ${g.type==='missing'?'gBad':g.type==='low'?'gWarn':'gOk'}">${g.label}</span>`).join('')}</div>`:''}
+  </div>`;
+}
+
+function saveAIKey(){
+  const k=$('aiKeyInp').value.trim();
+  localStorage.setItem('smm_aikey',k);
+  toast('🔑 API key saved locally.');
+}
+
+async function generateSummary(){
+  const key=localStorage.getItem('smm_aikey')||'';
+  if(!key){toast('Save your Anthropic API key first.');return;}
+  const month=$('aiMonSel').value;
+  const btn=$('btnGenSum');
+  const status=$('genStatus');
+  btn.disabled=true;
+  status.innerHTML='<div style="color:rgba(255,255,255,.7);font-size:12px;padding:8px 0;"><span class="spin">⏳</span> Fetching upload data from all zones...</div>';
+
+  // Fetch all uploads for this month
+  const {collection,query,where,getDocs,doc,setDoc,serverTimestamp}=window.FS;
+  const uSnap=await getDocs(query(collection(window.DB,'uploads'),where('month','==',month)));
+  const uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const zSnap=await getDocs(collection(window.DB,'zones'));
+  const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  // Build context
+  const lines=[`SMM Monthly Report Gap Analysis — Month: ${month}`,``,`Required Folders (${FOLDERS.length}):`];
+  FOLDERS.forEach(f=>lines.push(`  [${f.id}] ${f.name}: ${f.desc}`));
+  lines.push('');
+  lines.push('Upload Status by Zone:');
+  zones.forEach(z=>{
+    const zUp=uploads.filter(u=>u.zoneId===z.id);
+    lines.push(`\nZone: ${z.name} (${z.desc||''})`);
+    FOLDERS.forEach(f=>{
+      const fu=zUp.filter(u=>u.folderId===f.id);
+      lines.push(fu.length?`  ✅ ${f.name}: ${fu.map(u=>u.name).join(', ')}`:`  ❌ ${f.name}: MISSING — no files uploaded`);
+    });
+    lines.push(`  Total files: ${zUp.length}`);
+  });
+
+  // Also add historical context
+  const histSnap=await getDocs(query(collection(window.DB,'uploads')));
+  const allUploads=histSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const pastMonths=[...new Set(allUploads.map(u=>u.month))].filter(m=>m!==month).sort().slice(-3);
+  if(pastMonths.length){
+    lines.push('\n\nHistorical Context (last 3 months):');
+    pastMonths.forEach(pm=>{
+      const pmUps=allUploads.filter(u=>u.month===pm);
+      lines.push(`  ${pm}: ${pmUps.length} files across ${[...new Set(pmUps.map(u=>u.zoneId))].length} zones`);
+    });
+  }
+
+  status.innerHTML='<div style="color:rgba(255,255,255,.7);font-size:12px;padding:8px 0;"><span class="spin">🤖</span> Claude is analysing all zone submissions...</div>';
+
+  const prompt=`You are a manufacturing excellence consultant reviewing monthly report submissions for an investment casting facility (SMM Review).
+
+The facility runs improvement programs: 5S, Visual Management, OEE, Losses tracking, RCA/Why-Why analysis, KANBAN, PFMEA, TPM, SPC, MSA, Kaizen.
+
+Here is the current submission status:
+
+${lines.join('\n')}
+
+Generate a comprehensive monthly summary report with:
+
+1. **EXECUTIVE SUMMARY** (3-4 lines): Overall health of submissions for ${month}, total files received, zones performing well, zones with issues.
+
+2. **ZONE-WISE STATUS** (for each zone):
+   - Files submitted vs required
+   - What was submitted (list folder names)  
+   - What is MISSING (critical gaps)
+   - Brief observation
+
+3. **CRITICAL GAPS** (consolidated list): Every zone+folder combination with missing files. Format: "Zone X → [Folder Name]: Not submitted"
+
+4. **PATTERN OBSERVATIONS**: Any recurring gaps across multiple zones (e.g., "RCA not submitted by 5 out of 8 zones — this is a systemic issue")
+
+5. **RECOMMENDATIONS FOR COORDINATOR (ARUN)**: 5 specific actions before sharing to consultant, with which leader to contact.
+
+6. **CONSULTANT READINESS**: Rate overall readiness (Ready / Partially Ready / Not Ready) and what needs to be done before consultant review.
+
+Be specific. Use zone names. Flag critical missing items clearly. Keep it professional but direct.`;
+
+  try{
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':key,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:2000,messages:[{role:'user',content:prompt}]})
+    });
+    const data=await resp.json();
+    if(data.error){status.innerHTML=`<div style="color:#fca5a5;font-size:12px;padding:8px;">${esc(data.error.message)}</div>`;btn.disabled=false;return;}
+    const text=data.content?.find(c=>c.type==='text')?.text||'';
+
+    // Build gap badges
+    const gapBadges=[];
+    let totalGaps=0;
+    zones.forEach(z=>{
+      const zUp=uploads.filter(u=>u.zoneId===z.id);
+      FOLDERS.forEach(f=>{
+        if(!zUp.find(u=>u.folderId===f.id)){
+          gapBadges.push({label:`${z.name} → ${f.icon}`,type:'missing'});
+          totalGaps++;
+        }
+      });
+    });
+
+    // Save to Firestore
+    await setDoc(doc(collection(window.DB,'summaries')),{
+      month,title:`Zone Submission Summary`,text,
+      generatedBy:CU.name,createdAt:serverTimestamp(),createdAtStr:new Date().toLocaleDateString(),
+      totalFiles:uploads.length,totalGaps,gapBadges:gapBadges.slice(0,20),
+      zoneCount:zones.length
+    });
+
+    status.innerHTML='<div style="color:#4ade80;font-size:12px;padding:8px;">✅ Summary generated and saved! Visible to all users.</div>';
+    toast('✅ Summary saved — everyone can now see it!');
+    setTimeout(()=>renderSummaries(),1200);
+  }catch(e){
+    status.innerHTML=`<div style="color:#fca5a5;font-size:12px;padding:8px;">Error: ${esc(e.message)}</div>`;
+  }
+  btn.disabled=false;
+}
+
+function showUserModal(u){
+  const zones=[];
+  (async()=>{
+    const {collection,getDocs}=window.FS;
+    const zSnap=await getDocs(collection(window.DB,'zones'));
+    zSnap.docs.forEach(d=>zones.push({id:d.id,...d.data()}));
+    modal(`<div class="mOverlay center" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+      <div class="mBox">
+        <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btn-ic" onclick="closeModal()">✕</button></div>
+        <div class="mBody">
+          <div class="f2"><label>Full Name</label><input id="mN" value="${esc(u?.name||'')}" placeholder="e.g. Shiv Mohan"></div>
+          <div class="f2"><label>Username</label><input id="mU" value="${esc(u?.username||'')}" placeholder="e.g. shiv_z3"></div>
+          <div class="f2"><label>Password</label><input id="mP" type="text" value="${esc(u?.password||'')}" placeholder="Set a password"></div>
+          <div class="f2"><label>Role</label>
+            <select id="mR">
+              <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
+              <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Coordinator (Arun)</option>
+              <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
+              <option value="admin"${u?.role==='admin'?' selected':''}>Admin</option>
+            </select>
+          </div>
+          <div class="f2"><label>Zone</label>
+            <select id="mZ">
+              <option value="">— All Zones (for Admin/Consultant) —</option>
+              ${zones.map(z=>`<option value="${z.id}"${u?.zoneId===z.id?' selected':''}>${esc(z.name)} — ${esc(z.desc||'')}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div class="mFoot">
+          <button class="btn btn-o" onclick="closeModal()">Cancel</button>
+          <button class="btn btn-p" onclick="saveUser('${u?.id||''}')">Save</button>
+        </div>
+      </div>
+    </div>`);
+  })();
+}
+
+
+// ════════════════════════════════════════════════════
+// DYNAMIC SIDEBAR BUILDER
+// ════════════════════════════════════════════════════
+function buildSidebar(){
+  const isAdmin = CU && (CU.role==='admin'||CU.role==='coordinator');
+  const isCons  = CU && CU.role==='consultant';
+  const secs = window.SECTIONS||{};
+  const mods = window.MODULES||{};
+
+  // Group sections by module number
+  const byMod = {};
+  Object.values(secs).forEach(s=>{
+    const m = s.mod||1;
+    if(!byMod[m]) byMod[m]=[];
+    byMod[m].push(s);
+  });
+
+  // Sort modules by order
+  const modNums = Object.keys(byMod).map(Number).sort((a,b)=>a-b);
+
+  // Find module name from MODULES store
+  function modName(num){
+    const found = Object.values(mods).find(m=>m.order===num||m.id==='mod'+num);
+    return found ? found.name : 'Module '+num;
+  }
+  function modColor(num){
+    const found = Object.values(mods).find(m=>m.order===num||m.id==='mod'+num);
+    return found?.colorKey||'blue';
+  }
+  const colorMap = {green:'var(--green)',purple:'var(--purple)',blue:'var(--blue)',amber:'var(--amber)',red:'var(--red)',navy:'var(--navy)'};
+
+  let html = `
+    <div class="siGrp">Overview</div>
+    <div class="siItem${CP==='dash'?' act':''}" data-p="dash"><span class="siIcon">🏠</span>Dashboard</div>`;
+
+  modNums.forEach(num=>{
+    const color = colorMap[modColor(num)]||'var(--blue)';
+    html += `<div class="siGrp" style="color:${color}">${esc(modName(num))}</div>`;
+    byMod[num].sort((a,b)=>(a.order||0)-(b.order||0)).forEach(s=>{
+      const active = CP===s.id?' act':'';
+      html += `<div class="siItem${active}" data-p="${s.id}" data-mod="${num}" style="${active?'border-left-color:'+color+';background:'+color+'18;color:'+color:''}"><span class="siIcon">${s.icon||'📄'}</span>${esc(s.label)}</div>`;
+    });
+  });
+
+  if(isAdmin||isCons){
+    html += `<div class="siGrp" id="siAdmGrp">Admin</div>
+    <div class="siItem${CP==='ai_sum'?' act':''}" data-p="ai_sum" id="siAI"><span class="siIcon">🤖</span>AI Summaries</div>
+    <div class="siItem${CP==='all_files'?' act':''}" data-p="all_files" id="siFiles"><span class="siIcon">📂</span>All Files</div>`;
+    if(isAdmin){
+      html += `
+    <div class="siItem${CP==='modules_admin'?' act':''}" data-p="modules_admin" id="siMods"><span class="siIcon">🧩</span>Modules & Sections</div>
+    <div class="siItem${CP==='users'?' act':''}" data-p="users" id="siUsers"><span class="siIcon">👥</span>Users</div>
+    <div class="siItem${CP==='zones'?' act':''}" data-p="zones" id="siZones"><span class="siIcon">🗂️</span>Zones</div>`;
+    }
+  }
+
+  const el = document.getElementById('sidebarContent');
+  if(el) el.innerHTML = html;
+
+  // Re-attach click listener
+  const sideEl = document.getElementById('sideEl');
+  if(sideEl){
+    sideEl.onclick = null;
+    sideEl.addEventListener('click', e=>{
+      const item = e.target.closest('.siItem[data-p]');
+      if(item) goto(item.dataset.p);
+    });
+  }
+}
+
+// ════════════════════════════════════════════════════
+// MODULE & SECTION ADMIN PAGE
+// ════════════════════════════════════════════════════
+async function renderModulesAdmin(){
+  const mc=$('mc');
+  mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Loading modules...</div>';
+  const {collection,getDocs}=window.FS;
+  const [modSnap,secSnap]=await Promise.all([
+    getDocs(collection(window.DB,'modules')),
+    getDocs(collection(window.DB,'sections'))
+  ]);
+  const mods=modSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+  const secs=secSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const ICONS=['📊','📉','🔍','🏭','⚠️','🧹','👣','📋','🎓','🔄','🔩','📐','📈','🔧','💡','📁','🚨','📝','📌','🎯','🔎','📦','⚙️','🏗️','📏'];
+
+  mc.innerHTML=`
+  <div class="pgTitle">🧩 Modules & Sections</div>
+  <div class="pgSub">Add, edit or delete modules and their sections. Changes reflect immediately in the sidebar for all users.</div>
+
+  <div class="card">
+    <div class="cardHd">Modules
+      <button class="btn btnP btnSm" onclick="showModModal(null)">+ Add Module</button>
+    </div>
+    ${mods.length?mods.map(m=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--gray2);border-radius:7px;margin-bottom:8px;background:var(--gray0);">
+      <span style="font-size:18px;">📦</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:700;color:var(--navy)">${esc(m.name)}</div>
+        <div style="font-size:11px;color:var(--gray3)">Order: ${m.order||1} · Color: ${m.colorKey||'blue'} · ${secs.filter(s=>s.mod===m.order||s.mod===parseInt(m.order)).length} sections</div>
+      </div>
+      <button class="btn btnO btnSm" onclick='showModModal(${JSON.stringify({id:m.id,...m}).replace(/"/g,"&quot;")})'>Edit</button>
+      <button class="btn btnD btnSm" onclick="delModule('${m.id}')">Delete</button>
+    </div>`).join(''):'<p style="color:var(--gray3);font-size:13px">No modules yet.</p>'}
+  </div>
+
+  ${mods.map(m=>{
+    const modSecs=secs.filter(s=>s.mod===m.order||s.mod===parseInt(m.order)).sort((a,b)=>(a.order||0)-(b.order||0));
+    return `<div class="card">
+      <div class="cardHd" style="color:var(--navy)">
+        📦 ${esc(m.name)} — Sections
+        <button class="btn btnP btnSm" onclick="showSecModal(null,'${m.id}',${m.order||1})">+ Add Section</button>
+      </div>
+      ${modSecs.length?`
+      <div class="tblWrap"><table class="tbl">
+        <thead><tr><th>Icon</th><th>Section Name</th><th>Order</th><th>Checklist Items</th><th>Actions</th></tr></thead>
+        <tbody>${modSecs.map(s=>`<tr>
+          <td style="text-align:center;font-size:18px">${s.icon||'📄'}</td>
+          <td><b>${esc(s.label)}</b><br><span style="font-size:11px;color:var(--gray3)">${esc(s.desc||'')}</span></td>
+          <td style="text-align:center">${s.order||1}</td>
+          <td style="text-align:center"><span class="pill pb">${(s.required||[]).length} items</span></td>
+          <td>
+            <button class="btn btnO btnSm" onclick='showSecModal(${JSON.stringify({id:s.id,...s}).replace(/"/g,"&quot;")},"${m.id}",${m.order||1})'>Edit</button>
+            <button class="btn btnD btnSm" onclick="delSection('${s.id}')">Delete</button>
+          </td>
+        </tr>`).join('')}</tbody>
+      </table></div>`:`<p style="color:var(--gray3);font-size:13px;padding:8px">No sections in this module. Add one above.</p>`}
+    </div>`;
+  }).join('')}`;
+}
+
+function showModModal(m){
+  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
+    <div class="mBox">
+      <div class="mHead"><h3>${m?'Edit Module':'Add Module'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div class="f2"><label>Module Name</label><input id="mMName" value="${esc(m?.name||'')}" placeholder="e.g. Quality Management"></div>
+        <div class="f2"><label>Display Order (1 = first in sidebar)</label><input type="number" id="mMOrder" value="${m?.order||''}" placeholder="e.g. 3" min="1"></div>
+        <div class="f2"><label>Color</label><select id="mMColor">
+          ${['green','purple','blue','amber','red','navy'].map(c=>`<option value="${c}"${m?.colorKey===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}
+        </select></div>
+      </div>
+      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveMod('${m?.id||''}')">Save</button></div>
+    </div>
+  </div>`;
+}
+
+async function saveMod(editId){
+  const name=$('mMName').value.trim();
+  const order=parseInt($('mMOrder').value)||1;
+  const colorKey=$('mMColor').value;
+  if(!name){toast('Enter module name.');return;}
+  const {doc,setDoc,collection,addDoc}=window.FS;
+  if(editId) await setDoc(doc(window.DB,'modules',editId),{name,order,colorKey},{merge:true});
+  else await addDoc(collection(window.DB,'modules'),{name,order,colorKey});
+  closeModal();toast('✅ Module saved.');
+  await loadSectionsAndModules();
+  renderModulesAdmin();
+}
+
+async function delModule(id){
+  if(!confirm('Delete this module? Sections inside it will remain but lose their module link.'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'modules',id));
+  toast('Module deleted.');
+  await loadSectionsAndModules();
+  renderModulesAdmin();
+}
+
+function showSecModal(s, modId, modOrder){
+  const ICONS=['📊','📉','🔍','🏭','⚠️','🧹','👣','📋','🎓','🔄','🔩','📐','📈','🔧','💡','📁','🚨','📝','📌','🎯','🔎','📦','⚙️'];
+  const existingItems=(s?.required||[]).join('\n');
+  $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
+    <div class="mBox" style="max-width:600px">
+      <div class="mHead"><h3>${s?'Edit Section':'Add Section'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div class="f2"><label>Section Name</label><input id="sName" value="${esc(s?.label||'')}" placeholder="e.g. Quality Alerts"></div>
+          <div class="f2"><label>Short Description</label><input id="sDesc" value="${esc(s?.desc||'')}" placeholder="e.g. Alert SOP and process"></div>
+          <div class="f2"><label>Icon</label><select id="sIcon">${ICONS.map(ic=>`<option value="${ic}"${s?.icon===ic?' selected':''}>${ic}</option>`).join('')}</select></div>
+          <div class="f2"><label>Display Order</label><input type="number" id="sOrder" value="${s?.order||''}" placeholder="e.g. 5" min="1"></div>
+        </div>
+        <div class="f2"><label>Section ID (no spaces, e.g. m3_quality)</label>
+          <input id="sId" value="${esc(s?.id||'')}" placeholder="m3_quality" ${s?'readonly style="background:var(--gray1)"':''}></div>
+        <div class="f2"><label>Checklist Items — one per line (these appear as required items for leaders to upload)</label>
+          <textarea id="sItems" rows="8" placeholder="Enter each required item on a new line...">${esc(existingItems)}</textarea></div>
+      </div>
+      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveSec('${s?.id||''}',${modOrder})">Save Section</button></div>
+    </div>
+  </div>`;
+}
+
+async function saveSec(editId, modOrder){
+  const label=$('sName').value.trim();
+  const desc=$('sDesc').value.trim();
+  const icon=$('sIcon').value;
+  const order=parseInt($('sOrder').value)||1;
+  const sId=$('sId').value.trim().replace(/\s+/g,'_').toLowerCase();
+  const itemsRaw=$('sItems').value;
+  const required=itemsRaw.split('\n').map(l=>l.trim()).filter(Boolean);
+  if(!label){toast('Enter section name.');return;}
+  if(!sId){toast('Enter a section ID.');return;}
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'sections',sId),{id:sId,label,desc,icon,order,mod:modOrder,required},{merge:true});
+  closeModal();toast('✅ Section saved.');
+  await loadSectionsAndModules();
+  renderModulesAdmin();
+}
+
+async function delSection(id){
+  if(!confirm('Delete this section? All uploaded files for this section remain but the section will no longer appear.'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'sections',id));
+  toast('Section deleted.');
+  await loadSectionsAndModules();
+  renderModulesAdmin();
+}
+
 // ════════════════════════════════════════════════════
 // APP INIT — called by Firebase module after DB is ready
 // Defined here (after login/toast/$ etc.) so all references work
@@ -936,6 +1589,7 @@ window._appInit = function(){
   var lp=document.getElementById('liP');
   if(lu) lu.onkeydown=function(e){if(e.key==='Enter')login();};
   if(lp) lp.onkeydown=function(e){if(e.key==='Enter')login();};
+  // seedIfEmpty loads sections and calls buildSidebar internally
   seedIfEmpty();
 };
 
