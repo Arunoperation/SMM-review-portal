@@ -521,14 +521,7 @@ async function login(){
     $('appScr').style.display='flex';
     $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
     $('topUser').textContent=CU.name;
-    const isAdm=CU.role==='admin'||CU.role==='coordinator';
-    const isCons=CU.role==='consultant';
-    if(isAdm||isCons){
-      $('siAdmGrp').style.display='';
-      $('siAI').classList.remove('hidden');
-      $('siFiles').classList.remove('hidden');
-      if(isAdm){$('siUsers').classList.remove('hidden');$('siZones').classList.remove('hidden');$('siMods')?.classList.remove('hidden');}
-    }
+    // Admin items shown via buildSidebar() which checks CU.role
     buildBnav();
     goto('dash');
     const lb=document.getElementById('logoutBtn');
