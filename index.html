@@ -492,18 +492,45 @@ async function seedIfEmpty(){
 
 async function loadSectionsAndModules(){
   try{
-    const {collection,getDocs}=window.FS;
+    const {collection,getDocs,doc,setDoc}=window.FS;
     const [secSnap,modSnap]=await Promise.all([
       getDocs(collection(window.DB,'sections')),
       getDocs(collection(window.DB,'modules'))
     ]);
-    if(!secSnap.empty){
+
+    if(secSnap.empty){
+      // Sections not in Firestore yet — seed from defaults and use defaults
+      for(const [sid,sec] of Object.entries(window.DEFAULT_SECTIONS||{})){
+        await setDoc(doc(window.DB,'sections',sid),{...sec,id:sid});
+      }
+      // Use DEFAULT_SECTIONS as-is (already in window.SECTIONS)
+    } else {
+      // Load from Firestore
       window.SECTIONS={};
-      secSnap.docs.forEach(d=>{const dat=d.data();window.SECTIONS[d.id]={...dat,id:d.id};});
+      secSnap.docs.forEach(d=>{
+        const dat=d.data();
+        window.SECTIONS[d.id]={...dat,id:d.id};
+      });
     }
-    window.MODULES={};
-    modSnap.docs.forEach(d=>window.MODULES[d.id]={...d.data(),id:d.id});
-  }catch(e){console.warn('loadSections error:',e);}
+
+    if(modSnap.empty){
+      // Seed default modules
+      const defMods=[
+        {id:'mod1',name:'5S & Workplace',colorKey:'green',order:1},
+        {id:'mod2',name:'Operations Excellence',colorKey:'purple',order:2}
+      ];
+      for(const m of defMods){
+        await setDoc(doc(window.DB,'modules',m.id),m);
+        window.MODULES[m.id]=m;
+      }
+    } else {
+      window.MODULES={};
+      modSnap.docs.forEach(d=>window.MODULES[d.id]={...d.data(),id:d.id});
+    }
+  }catch(e){
+    console.warn('loadSections error:',e);
+    // Fallback: use DEFAULT_SECTIONS so app still works
+  }
   buildSidebar();
 }
 
