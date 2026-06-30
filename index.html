@@ -549,7 +549,7 @@ async function login(){
     CU={id:d.id,...ud};
     $('loginScr').style.display='none';
     $('appScr').style.display='flex';
-    $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
+    $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader',dept_leader:'Dept Leader'}[CU.role]||CU.role;
     $('topUser').textContent=CU.name;
     // Load this leader's zone permissions (module/section visibility)
     if(CU.role==='leader' && CU.zoneId){
@@ -558,6 +558,14 @@ async function login(){
         const zSnap=await getDoc(doc(window.DB,'zones',CU.zoneId));
         if(zSnap.exists()) window.MY_ZONE = {id:zSnap.id, ...zSnap.data()};
       }catch(e){console.warn('zone perm load error',e);}
+    }
+    // Load this department leader's permissions (module/section visibility)
+    if(CU.role==='dept_leader' && CU.deptId){
+      try{
+        const {doc,getDoc}=window.FS;
+        const dSnap=await getDoc(doc(window.DB,'departments',CU.deptId));
+        if(dSnap.exists()) window.MY_DEPT = {id:dSnap.id, ...dSnap.data()};
+      }catch(e){console.warn('dept perm load error',e);}
     }
     // Admin items shown via buildSidebar() which checks CU.role
     buildBnav();
@@ -575,7 +583,7 @@ function logout(){CU=null;$('appScr').style.display='none';$('loginScr').style.d
 // ─── NAV ───
 function buildBnav(){
   const items=[{p:'dash',ico:'🏠',lbl:'Home'},{p:'m1_5s',ico:'🏭',lbl:'5S'},{p:'m2_oee',ico:'📊',lbl:'OEE'},{p:'ai_sum',ico:'🤖',lbl:'Summary',adm:true},{p:'all_files',ico:'📂',lbl:'Files',adm:true}];
-  const isAdm=CU.role!=='leader';
+  const isAdm=CU.role!=='leader' && CU.role!=='dept_leader';
   $('bnavRow').innerHTML=items.filter(i=>!i.adm||isAdm).map(i=>`<div class="bnavItem${i.p===CP?' act':''}" id="bn-${i.p}" onclick="goto('${i.p}')"><span class="bnavIco">${i.ico}</span><span class="bnavLbl">${i.lbl}</span></div>`).join('');
 }
 $('sideEl').addEventListener('click',e=>{const it=e.target.closest('.siItem[data-p]');if(it)goto(it.dataset.p);});
@@ -598,6 +606,7 @@ function render(){
   if(CP==='all_files'){renderAllFiles();return;}
   if(CP==='users'){renderUsers();return;}
   if(CP==='zones'){renderZones();return;}
+  if(CP==='departments'){renderDepartments();return;}
   if(CP==='modules_admin'){renderModulesAdmin();return;}
   // Check if CP is a known section (from Firestore or defaults)
   const secKeys = Object.keys(window.SECTIONS||{});
@@ -613,12 +622,15 @@ function render(){
 async function renderDash(){
   const mc=$('mc');
   const {collection,query,where,getDocs}=window.FS;
-  const isAdmin=CU.role!=='leader';
+  const isAdmin = CU.role!=='leader' && CU.role!=='dept_leader';
+  const isLeaderType = CU.role==='leader' || CU.role==='dept_leader';
 
-  // Determine which sections THIS user is allowed to see (zone-filtered for leaders)
+  // Determine which sections THIS user is allowed to see (zone- or dept-filtered)
   const myZone = (CU.role==='leader') ? window.MY_ZONE : null;
-  const allowedModules = myZone ? myZone.allowedModules : null;
-  const allowedSections = myZone ? myZone.allowedSections : null;
+  const myDept = (CU.role==='dept_leader') ? window.MY_DEPT : null;
+  const myEntity = myZone || myDept;
+  const allowedModules = myEntity ? myEntity.allowedModules : null;
+  const allowedSections = myEntity ? myEntity.allowedSections : null;
 
   function isSectionVisible(s){
     if(allowedModules && !allowedModules.includes(s.mod)) return false;
@@ -630,22 +642,23 @@ async function renderDash(){
 
   let uQ;
   if(CU.role==='leader') uQ=query(collection(window.DB,'uploads'),where('zoneId','==',CU.zoneId),where('month','==',CURMONTH));
+  else if(CU.role==='dept_leader') uQ=query(collection(window.DB,'uploads'),where('deptId','==',CU.deptId),where('month','==',CURMONTH));
   else uQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
   const uSnap=await getDocs(uQ);
   let uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
 
-  // For leaders, only count sections they're allowed to see
-  if(CU.role==='leader'){
+  // For zone/dept leaders, only count sections they're allowed to see
+  if(isLeaderType){
     uploads = uploads.filter(u=>visibleSectionKeys.includes(u.sectionId));
   }
 
-  const totalSections = CU.role==='leader' ? visibleSectionKeys.length : getSectionKeys().length;
+  const totalSections = isLeaderType ? visibleSectionKeys.length : getSectionKeys().length;
   const coveredSections=new Set(uploads.map(u=>u.sectionId)).size;
   const pct = totalSections ? Math.round(coveredSections/totalSections*100) : 0;
 
   // Build module cards dynamically based on what modules exist (and are visible to this user)
   const allModNums = getAllModNums();
-  const visibleModNums = CU.role==='leader'
+  const visibleModNums = isLeaderType
     ? (allowedModules ? allModNums.filter(n=>allowedModules.includes(n)) : allModNums)
     : allModNums;
 
@@ -661,7 +674,7 @@ async function renderDash(){
 
   const modCardsHTML = visibleModNums.map(num=>{
     let modKeys = getModKeys(num);
-    if(CU.role==='leader' && allowedSections) modKeys = modKeys.filter(k=>allowedSections.includes(k));
+    if(isLeaderType && allowedSections) modKeys = modKeys.filter(k=>allowedSections.includes(k));
     const modCov = modKeys.filter(k=>uploads.find(u=>u.sectionId===k)).length;
     const modPct = modKeys.length ? Math.round(modCov/modKeys.length*100) : 0;
     const color = colorVar[modColorKey(num)]||'var(--blue)';
@@ -680,42 +693,51 @@ async function renderDash(){
   // Zone matrix (admin only) — still shows ALL zones/sections for oversight
   let matrixHTML='';
   if(isAdmin){
-    const zSnap=await getDocs(collection(window.DB,'zones'));
-    const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+    const [zSnap,dSnap]=await Promise.all([
+      getDocs(collection(window.DB,'zones')),
+      getDocs(collection(window.DB,'departments'))
+    ]);
+    const zones=zSnap.docs.map(d=>({id:d.id,...d.data(),_type:'zone'}));
+    const depts=dSnap.docs.map(d=>({id:d.id,...d.data(),_type:'dept'}));
+    const allEntities=[...zones,...depts];
+
     const allUQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
     const allU=(await getDocs(allUQ)).docs.map(d=>({id:d.id,...d.data()}));
 
     const allSecsList = Object.values(window.SECTIONS||{}).sort((a,b)=>(a.mod-b.mod)||((a.order||0)-(b.order||0)));
 
-    const zoneRows=zones.map(z=>{
-      const zu=allU.filter(u=>u.zoneId===z.id);
-      const zAllowedMods = z.allowedModules;
-      const zAllowedSecs = z.allowedSections;
+    const entityRows=allEntities.map(ent=>{
+      const eu = ent._type==='zone'
+        ? allU.filter(u=>u.zoneId===ent.id)
+        : allU.filter(u=>u.deptId===ent.id);
+      const eAllowedMods = ent.allowedModules;
+      const eAllowedSecs = ent.allowedSections;
       const cells = allSecsList.map(s=>{
-        const isRunningHere = (!zAllowedMods || zAllowedMods.includes(s.mod)) && (!zAllowedSecs || zAllowedSecs.includes(s.id));
+        const isRunningHere = (!eAllowedMods || eAllowedMods.includes(s.mod)) && (!eAllowedSecs || eAllowedSecs.includes(s.id));
         if(!isRunningHere) return `<td style="text-align:center;color:var(--gray3)">—</td>`;
-        const n=zu.filter(u=>u.sectionId===s.id).length;
+        const n=eu.filter(u=>u.sectionId===s.id).length;
         return `<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;
       }).join('');
-      const total=zu.length;
-      return`<tr><td><b>${esc(z.name)}</b></td>${cells}<td><b>${total}</b></td></tr>`;
+      const total=eu.length;
+      const typeLabel = ent._type==='zone' ? '' : '<span class="pill pp" style="margin-left:5px;font-size:9px">DEPT</span>';
+      return`<tr><td><b>${esc(ent.name)}</b>${typeLabel}</td>${cells}<td><b>${total}</b></td></tr>`;
     }).join('');
 
     matrixHTML=`<div class="card mt16">
-      <div class="cardHd">Zone × Section Submission Matrix — ${CURMONTH}
+      <div class="cardHd">Zone & Department × Section Matrix — ${CURMONTH}
         <span class="pill ${pct>=80?'pg':pct>=50?'pa':'pr'}">${pct}% covered</span>
       </div>
       <div class="matrixWrap"><table class="matrix">
-        <thead><tr><th>Zone</th>${allSecsList.map(s=>`<th title="${esc(s.label)}">${s.icon}</th>`).join('')}<th>Files</th></tr></thead>
-        <tbody>${zoneRows}</tbody>
+        <thead><tr><th>Zone / Dept</th>${allSecsList.map(s=>`<th title="${esc(s.label)}">${s.icon}</th>`).join('')}<th>Files</th></tr></thead>
+        <tbody>${entityRows}</tbody>
       </table></div>
-      <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; — = module/section not assigned to this zone</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; — = not assigned &nbsp;|&nbsp; <span class="pill pp" style="font-size:9px">DEPT</span> = cross-functional department</div>
     </div>`;
   }
 
   mc.innerHTML=`
   <div class="pgTitle">👋 ${esc(CU.name)}</div>
-  <div class="pgSub">${CU.role==='leader'?(CU.zoneName||CU.zoneId):'All Zones'} · ${CURMONTH}</div>
+  <div class="pgSub">${CU.role==='leader'?(CU.zoneName||CU.zoneId):CU.role==='dept_leader'?(CU.deptName||CU.deptId)+' (Department)':'All Zones & Departments'} · ${CURMONTH}</div>
 
   <div class="statsGrid">
     <div class="statBox"><div class="stLbl">Files This Month</div><div class="stNum">${uploads.length}</div><div class="stSub">uploaded</div></div>
@@ -741,7 +763,7 @@ async function renderSection(skey){
   }
   if(!sec){mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Section not found.</div>';return;}
 
-  const isAdmin=CU.role!=='leader';
+  const isAdmin=CU.role!=='leader' && CU.role!=='dept_leader';
   const modObj=Object.values(window.MODULES||{}).find(m=>m.order===sec.mod||m.id==='mod'+sec.mod);
   const modLabel=modObj?modObj.name:('Module '+sec.mod);
   const modBand=`<span class="modBand" style="background:var(--blue-l);color:var(--blue);display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px">${modLabel}</span>`;
@@ -769,6 +791,7 @@ async function renderSectionItemList(skey, sec, modBand, isAdmin){
   // Fetch all uploads for this section (to compute per-item file counts)
   let q;
   if(CU.role==='leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('zoneId','==',CU.zoneId));
+  else if(CU.role==='dept_leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('deptId','==',CU.deptId));
   else q=query(collection(window.DB,'uploads'),where('sectionId','==',skey));
   const snap=await getDocs(q);
   const uploads=snap.docs.map(d=>({id:d.id,...d.data()}));
@@ -924,6 +947,7 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
 
   let q;
   if(CU.role==='leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('zoneId','==',CU.zoneId));
+  else if(CU.role==='dept_leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('deptId','==',CU.deptId));
   else q=query(collection(window.DB,'uploads'),where('sectionId','==',skey));
   const snap=await getDocs(q);
   let uploads=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadedAt?.seconds||0)-(a.uploadedAt?.seconds||0));
@@ -936,17 +960,21 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
   const allMonths=[...new Set(uploads.map(u=>u.month))].sort().reverse();
   const monthUps=uploads.filter(u=>u.month===selMonth);
 
-  let zones=[];
+  let zones=[]; let depts=[];
   if(isAdmin){
-    const zSnap=await getDocs(collection(window.DB,'zones'));
+    const [zSnap,dSnap]=await Promise.all([
+      getDocs(collection(window.DB,'zones')),
+      getDocs(collection(window.DB,'departments'))
+    ]);
     zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+    depts=dSnap.docs.map(d=>({id:d.id,...d.data()}));
   }
 
   const folderKey = skey+'__'+itemIdx; // unique key for upload widgets on this page
 
   const uploadBlock = CU.role!=='consultant' ? `
   <div class="card">
-    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:''}</div>
+    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:CU.role==='dept_leader'?`<span class="pill pp">${esc(CU.deptName||CU.deptId)}</span>`:''}</div>
     <div class="f2"><label>Month</label>
       <select id="upMon-${folderKey}">
         ${MONTHS.map((m)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
@@ -977,7 +1005,7 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
         ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
       </select>
     </div>
-    ${zones.map(z=>{
+    ${zones.filter(z=>monthUps.some(u=>u.zoneId===z.id) || !depts.length).map(z=>{
       const zf=monthUps.filter(u=>u.zoneId===z.id);
       return `<div style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
@@ -985,6 +1013,17 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
           <span class="pill ${zf.length?'pg':'pr'}">${zf.length?zf.length+' file(s)':'⚠ No upload'}</span>
         </div>
         ${zf.length?zf.map(u=>fRowHTML(u)).join(''):`<div style="padding:9px 12px;background:var(--red-l);border-radius:6px;font-size:12px;color:var(--red);">No files for ${selMonth}</div>`}
+      </div>`;
+    }).join('')}
+    ${depts.map(d=>{
+      const df=monthUps.filter(u=>u.deptId===d.id);
+      if(!df.length) return ''; // hide depts with no uploads to this item (cleaner for dept-specific sections)
+      return `<div style="margin-bottom:14px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
+          <span style="background:var(--purple);color:#fff;border-radius:5px;padding:2px 10px;font-size:11px;font-weight:700;">${esc(d.name)} (Dept)</span>
+          <span class="pill pg">${df.length} file(s)</span>
+        </div>
+        ${df.map(u=>fRowHTML(u)).join('')}
       </div>`;
     }).join('')}
   </div>`:`
@@ -1055,6 +1094,7 @@ async function doUploadItem(skey, itemIdx, folderKey){
       await addDoc(collection(window.DB,'uploads'),{
         sectionId:skey, name:pf.name, size:pf.size, month, checkItem, note,
         zoneId:CU.zoneId||'', zoneName:CU.zoneName||'',
+        deptId:CU.deptId||'', deptName:CU.deptName||'',
         uploadedById:CU.id, uploadedBy:CU.name,
         fileData:b64,
         uploadedAt:serverTimestamp(), uploadedAtStr:new Date().toLocaleDateString()
@@ -1336,25 +1376,35 @@ async function renderAllFiles(){
 async function renderUsers(){
   const mc=$('mc');
   const {collection,getDocs}=window.FS;
-  const [uSnap,zSnap]=await Promise.all([getDocs(collection(window.DB,'users')),getDocs(collection(window.DB,'zones'))]);
+  const [uSnap,zSnap,dSnap]=await Promise.all([
+    getDocs(collection(window.DB,'users')),
+    getDocs(collection(window.DB,'zones')),
+    getDocs(collection(window.DB,'departments'))
+  ]);
   const users=uSnap.docs.map(d=>({id:d.id,...d.data()}));
   const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const depts=dSnap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const roleLabel = {coordinator:'Admin',admin:'Admin',consultant:'Consultant',leader:'Zone Leader',dept_leader:'Dept Leader'};
+  const rolePillClass = {coordinator:'pb',admin:'pb',consultant:'pa',leader:'pg',dept_leader:'pp'};
 
   mc.innerHTML=`
   <div class="pgTitle">👥 Manage Users</div>
-  <div class="pgSub">Add leaders for each zone. They will use these credentials to log in.</div>
+  <div class="pgSub">Add leaders for each zone or department. They will use these credentials to log in.</div>
   <div class="card">
     <div class="cardHd">All Users <button class="btn btnP btnSm" onclick="showUserModal(null)">+ Add User</button></div>
     <div class="tblWrap"><table class="tbl">
-      <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Zone</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Zone / Department</th><th>Actions</th></tr></thead>
       <tbody>${users.map(u=>{
         const zone=zones.find(z=>z.id===u.zoneId);
+        const dept=depts.find(d=>d.id===u.deptId);
+        const assignment = u.role==='dept_leader' ? (dept?.name||u.deptId||'—')+' (Dept)' : (zone?.name||u.zoneId||'All');
         return `<tr>
           <td><b>${esc(u.name)}</b></td>
           <td><code style="background:var(--gray1);padding:2px 7px;border-radius:4px;font-size:12px;">${esc(u.username)}</code></td>
-          <td><span class="pill ${u.role==='admin'||u.role==='coordinator'?'pb':u.role==='consultant'?'pa':'pg'}">${u.role==='coordinator'?'Admin':u.role==='admin'?'Admin':esc(u.role)}</span></td>
-          <td>${esc(zone?.name||u.zoneId||'All')}</td>
-          <td><button class="btn btnO btnSm" onclick='showUserModal(${JSON.stringify({id:u.id,...u})})'>Edit</button> ${u.username!=='arun'?`<button class="btn btnD btnSm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
+          <td><span class="pill ${rolePillClass[u.role]||'pg'}">${roleLabel[u.role]||esc(u.role)}</span></td>
+          <td>${esc(assignment)}</td>
+          <td><button class="btn btnO btnSm" onclick='showUserModal(${JSON.stringify({id:u.id,...u}).replace(/"/g,"&quot;")})'>Edit</button> ${u.username!=='arun'?`<button class="btn btnD btnSm" onclick="delUser('${u.id}')">Del</button>`:''}</td>
         </tr>`;
       }).join('')}</tbody>
     </table></div>
@@ -1514,14 +1564,168 @@ async function saveZoneSections(zoneId){
   closeModal();toast('✅ Section visibility saved for this zone.');renderZones();
 }
 
+// ════════════════════════════════════════════════════
+// DEPARTMENTS — cross-functional sections not tied to a zone
+// (OEE, MSA, SPC, TPM, KANBAN, Constraint Management etc.)
+// ════════════════════════════════════════════════════
+async function renderDepartments(){
+  const mc=$('mc');
+  const {collection,getDocs}=window.FS;
+  const [dSnap,modSnap]=await Promise.all([
+    getDocs(collection(window.DB,'departments')),
+    getDocs(collection(window.DB,'modules'))
+  ]);
+  const depts=dSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const mods=modSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+
+  function moduleSummary(d){
+    if(!d.allowedModules) return '<span class="pill pg">All Modules</span>';
+    if(d.allowedModules.length===0) return '<span class="pill pr">No Modules</span>';
+    return d.allowedModules.map(mNum=>{
+      const m=mods.find(mm=>mm.order===mNum||mm.id==='mod'+mNum);
+      return `<span class="pill pb" style="margin-right:3px">${m?esc(m.name):'Module '+mNum}</span>`;
+    }).join('');
+  }
+
+  mc.innerHTML=`
+  <div class="pgTitle">🏢 Departments</div>
+  <div class="pgSub">Cross-functional teams not tied to a zone — e.g. OEE, MSA, SPC, TPM, KANBAN, Constraint Management. Each department gets its own login and uploads only to its assigned sections.</div>
+  <div class="card">
+    <div class="cardHd">Departments <button class="btn btnP btnSm" onclick="showDeptModal(null)">+ Add Department</button></div>
+    ${depts.length?`<div class="tblWrap"><table class="tbl">
+      <thead><tr><th>Department Name</th><th>Description</th><th>Modules Assigned</th><th>Actions</th></tr></thead>
+      <tbody>${depts.map(d=>`<tr>
+        <td><b>${esc(d.name)}</b></td>
+        <td>${esc(d.desc||'')}</td>
+        <td>${moduleSummary(d)}</td>
+        <td>
+          <button class="btn btnO btnSm" onclick='showDeptModal(${JSON.stringify({id:d.id,...d}).replace(/"/g,"&quot;")})'>Edit</button>
+          <button class="btn btnP btnSm" onclick="showDeptSectionsModal('${d.id}')">🧩 Sections</button>
+          <button class="btn btnD btnSm" onclick="delDept('${d.id}')">Del</button>
+        </td>
+      </tr>`).join('')}</tbody>
+    </table></div>`:`<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No departments yet. Add one above — e.g. "TPM Team", "Quality / MSA-SPC", "KANBAN Coordinators".</div>`}
+  </div>`;
+}
+
+function showDeptModal(d){
+  (async()=>{
+    const {collection,getDocs}=window.FS;
+    const modSnap=await getDocs(collection(window.DB,'modules'));
+    const mods=modSnap.docs.map(m=>({id:m.id,...m.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+    const allowedModules = d?.allowedModules;
+    const isAllSelected = !allowedModules;
+
+    modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+      <div class="mBox">
+        <div class="mHead"><h3>${d?'Edit Department':'Add Department'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+        <div class="mBody">
+          <div class="f2"><label>Department Name</label><input id="dN" value="${esc(d?.name||'')}" placeholder="e.g. TPM Team"></div>
+          <div class="f2"><label>Description</label><input id="dD" value="${esc(d?.desc||'')}" placeholder="e.g. Handles TPM AM, MTBF/MTTR tracking"></div>
+          <div class="f2">
+            <label>Modules This Department Handles</label>
+            <div style="font-size:11px;color:var(--gray3);margin-bottom:8px;">Fine-tune individual sections after saving via the 🧩 Sections button.</div>
+            ${mods.map(m=>`
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+                <input type="checkbox" id="dMod_${m.order}" ${isAllSelected || (allowedModules&&allowedModules.includes(m.order)) ? 'checked':''} style="width:16px;height:16px;">
+                <label for="dMod_${m.order}" style="font-size:13px;font-weight:500;margin:0;text-transform:none;letter-spacing:0;">${esc(m.name)}</label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveDept('${d?.id||''}')">Save</button></div>
+      </div>
+    </div>`);
+    window._deptModalMods = mods;
+  })();
+}
+
+async function saveDept(editId){
+  const name=$('dN').value.trim();
+  const desc=$('dD').value.trim();
+  if(!name){toast('Enter department name.');return;}
+  const mods = window._deptModalMods||[];
+  const allowedModules = mods.filter(m=>document.getElementById('dMod_'+m.order)?.checked).map(m=>m.order);
+  const {collection,doc,setDoc,addDoc}=window.FS;
+  const data = {name, desc, allowedModules};
+  if(editId) await setDoc(doc(window.DB,'departments',editId),data,{merge:true});
+  else await addDoc(collection(window.DB,'departments'),data);
+  closeModal();toast('✅ Department saved.');renderDepartments();
+}
+
+async function delDept(id){
+  if(!confirm('Delete this department? Users assigned to it will lose access until reassigned.'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'departments',id));
+  toast('Deleted.');renderDepartments();
+}
+
+async function showDeptSectionsModal(deptId){
+  const {collection,getDocs,doc,getDoc}=window.FS;
+  const [dDoc,modSnap]=await Promise.all([
+    getDoc(doc(window.DB,'departments',deptId)),
+    getDocs(collection(window.DB,'modules'))
+  ]);
+  const d = {id:dDoc.id, ...dDoc.data()};
+  const mods = modSnap.docs.map(m=>({id:m.id,...m.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+  const allowedModules = d.allowedModules;
+  const allowedSections = d.allowedSections;
+
+  const secs = Object.values(window.SECTIONS||{});
+  const visibleMods = allowedModules ? mods.filter(m=>allowedModules.includes(m.order)) : mods;
+
+  const body = visibleMods.map(m=>{
+    const modSecs = secs.filter(s=>s.mod===m.order).sort((a,b)=>(a.order||0)-(b.order||0));
+    return `<div style="margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">${esc(m.name)}</div>
+      ${modSecs.map(s=>{
+        const checked = !allowedSections || allowedSections.includes(s.id);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 12px;">
+          <input type="checkbox" class="deptSecChk" data-sid="${s.id}" ${checked?'checked':''} style="width:15px;height:15px;">
+          <label style="font-size:12px;margin:0;text-transform:none;letter-spacing:0;font-weight:400;">${s.icon||'📄'} ${esc(s.label)}</label>
+        </div>`;
+      }).join('') || '<div style="font-size:11px;color:var(--gray3);padding-left:12px;">No sections in this module.</div>'}
+    </div>`;
+  }).join('');
+
+  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    <div class="mBox" style="max-width:520px">
+      <div class="mHead"><h3>🧩 Sections — ${esc(d.name)}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div style="font-size:12px;color:var(--gray3);margin-bottom:12px;">Uncheck any section to hide it from this department's leader.</div>
+        ${body || '<div style="text-align:center;color:var(--gray3);padding:20px;">No modules assigned to this department yet. Edit the department first.</div>'}
+      </div>
+      <div class="mFoot">
+        <button class="btn btnO" onclick="closeModal()">Cancel</button>
+        <button class="btn btnP" onclick="saveDeptSections('${deptId}')">Save</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function saveDeptSections(deptId){
+  const checks = document.querySelectorAll('.deptSecChk');
+  const allowedSections = Array.from(checks).filter(c=>c.checked).map(c=>c.dataset.sid);
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'departments',deptId),{allowedSections},{merge:true});
+  closeModal();toast('✅ Section visibility saved.');renderDepartments();
+}
+
+
+
 
 
 function showUserModal(u){
-  const zones=[];
+  const zones=[]; const depts=[];
   (async()=>{
     const {collection,getDocs}=window.FS;
-    const zSnap=await getDocs(collection(window.DB,'zones'));
+    const [zSnap,dSnap]=await Promise.all([
+      getDocs(collection(window.DB,'zones')),
+      getDocs(collection(window.DB,'departments'))
+    ]);
     zSnap.docs.forEach(d=>zones.push({id:d.id,...d.data()}));
+    dSnap.docs.forEach(d=>depts.push({id:d.id,...d.data()}));
+
     modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
       <div class="mBox">
         <div class="mHead"><h3>${u?'Edit User':'Add User'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
@@ -1530,18 +1734,27 @@ function showUserModal(u){
           <div class="f2"><label>Username</label><input id="mU" value="${esc(u?.username||'')}" placeholder="e.g. shiv_z3"></div>
           <div class="f2"><label>Password</label><input id="mP" type="text" value="${esc(u?.password||'')}" placeholder="Set a password"></div>
           <div class="f2"><label>Role</label>
-            <select id="mR">
-              <option value="leader"${u?.role==='leader'?' selected':''}>Leader (Zone)</option>
+            <select id="mR" onchange="toggleUserRoleFields()">
+              <option value="leader"${u?.role==='leader'?' selected':''}>Zone Leader</option>
+              <option value="dept_leader"${u?.role==='dept_leader'?' selected':''}>Department Leader</option>
               <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Admin / Coordinator</option>
               <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
-              
             </select>
           </div>
-          <div class="f2"><label>Zone</label>
+          <div class="f2" id="zoneFieldWrap" style="${u?.role==='dept_leader'?'display:none':''}">
+            <label>Zone</label>
             <select id="mZ">
               <option value="">— All Zones (for Admin/Consultant) —</option>
               ${zones.map(z=>`<option value="${z.id}"${u?.zoneId===z.id?' selected':''}>${esc(z.name)} — ${esc(z.desc||'')}</option>`).join('')}
             </select>
+          </div>
+          <div class="f2" id="deptFieldWrap" style="${u?.role!=='dept_leader'?'display:none':''}">
+            <label>Department</label>
+            <select id="mDept">
+              <option value="">— Select Department —</option>
+              ${depts.map(d=>`<option value="${d.id}"${u?.deptId===d.id?' selected':''}>${esc(d.name)} — ${esc(d.desc||'')}</option>`).join('')}
+            </select>
+            ${!depts.length?'<div style="font-size:11px;color:var(--amber);margin-top:5px;">No departments created yet. Go to Admin → Departments to add one first.</div>':''}
           </div>
         </div>
         <div class="mFoot">
@@ -1553,13 +1766,28 @@ function showUserModal(u){
   })();
 }
 
+function toggleUserRoleFields(){
+  const role = $('mR').value;
+  const zoneWrap = $('zoneFieldWrap');
+  const deptWrap = $('deptFieldWrap');
+  if(role==='dept_leader'){
+    zoneWrap.style.display='none';
+    deptWrap.style.display='';
+  } else {
+    zoneWrap.style.display='';
+    deptWrap.style.display='none';
+  }
+}
+
 async function saveUser(editId){
   const name=$('mN').value.trim();
   const username=$('mU').value.trim().toLowerCase();
   const password=$('mP').value.trim();
   const role=$('mR').value;
-  const zoneId=$('mZ').value;
+  const zoneId = role==='dept_leader' ? '' : ($('mZ')?.value||'');
+  const deptId = role==='dept_leader' ? ($('mDept')?.value||'') : '';
   if(!name||!username||!password){toast('Fill all fields.');return;}
+  if(role==='dept_leader' && !deptId){toast('Please select a department.');return;}
   const {collection,doc,setDoc,getDocs,query,where}=window.FS;
 
   let zoneName='';
@@ -1567,8 +1795,13 @@ async function saveUser(editId){
     const zSnap=await getDocs(query(collection(window.DB,'zones'),where('__name__','==',zoneId)));
     if(!zSnap.empty) zoneName=zSnap.docs[0].data().name;
   }
+  let deptName='';
+  if(deptId){
+    const dSnap=await getDocs(query(collection(window.DB,'departments'),where('__name__','==',deptId)));
+    if(!dSnap.empty) deptName=dSnap.docs[0].data().name;
+  }
 
-  const data={name,username,password,role,zoneId,zoneName};
+  const data={name,username,password,role,zoneId,zoneName,deptId,deptName};
   if(editId){
     await setDoc(doc(window.DB,'users',editId),data,{merge:true});
   } else {
@@ -1737,10 +1970,12 @@ function buildSidebar(){
   const secs = window.SECTIONS||{};
   const mods = window.MODULES||{};
 
-  // Apply zone-based filtering for leaders only
+  // Apply zone-based filtering for zone leaders, dept-based filtering for dept leaders
   const myZone = (CU && CU.role==='leader') ? window.MY_ZONE : null;
-  const allowedModules = myZone ? myZone.allowedModules : null; // null = no restriction
-  const allowedSections = myZone ? myZone.allowedSections : null; // null = no restriction
+  const myDept = (CU && CU.role==='dept_leader') ? window.MY_DEPT : null;
+  const myEntity = myZone || myDept;
+  const allowedModules = myEntity ? myEntity.allowedModules : null; // null = no restriction
+  const allowedSections = myEntity ? myEntity.allowedSections : null; // null = no restriction
 
   // Group sections by module number — filtered for this zone's permissions
   const byMod = {};
@@ -1787,7 +2022,8 @@ function buildSidebar(){
       html += `
     <div class="siItem${CP==='modules_admin'?' act':''}" data-p="modules_admin" id="siMods"><span class="siIcon">🧩</span>Modules & Sections</div>
     <div class="siItem${CP==='users'?' act':''}" data-p="users" id="siUsers"><span class="siIcon">👥</span>Users</div>
-    <div class="siItem${CP==='zones'?' act':''}" data-p="zones" id="siZones"><span class="siIcon">🗂️</span>Zones</div>`;
+    <div class="siItem${CP==='zones'?' act':''}" data-p="zones" id="siZones"><span class="siIcon">🗂️</span>Zones</div>
+    <div class="siItem${CP==='departments'?' act':''}" data-p="departments" id="siDepts"><span class="siIcon">🏢</span>Departments</div>`;
     }
   }
 
