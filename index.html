@@ -572,10 +572,12 @@ function buildBnav(){
 }
 $('sideEl').addEventListener('click',e=>{const it=e.target.closest('.siItem[data-p]');if(it)goto(it.dataset.p);});
 function goto(p){
+  // Clear any open item-folder state when navigating to a section from sidebar/bnav
+  if(window['_item_'+p]!==undefined) delete window['_item_'+p];
   CP=p;
   document.querySelectorAll('.bnavItem').forEach(el=>el.classList.remove('act'));
   const bn=$('bn-'+p);if(bn)bn.classList.add('act');
-  buildSidebar(); // rebuilds sidebar with correct active state
+  buildSidebar();
   render();
 }
 
@@ -685,7 +687,6 @@ async function renderDash(){
 // ═══════════════════════════════════════════════════
 async function renderSection(skey){
   const mc=$('mc');
-  // Load section — from cache or Firestore
   let sec=window.SECTIONS[skey];
   if(!sec){
     try{
@@ -695,17 +696,198 @@ async function renderSection(skey){
     }catch(e){}
   }
   if(!sec){mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Section not found.</div>';return;}
-  const {collection,query,where,getDocs}=window.FS;
+
   const isAdmin=CU.role!=='leader';
-  const selMonth=window['_sm_'+skey]||CURMONTH;
+  const modObj=Object.values(window.MODULES||{}).find(m=>m.order===sec.mod||m.id==='mod'+sec.mod);
+  const modLabel=modObj?modObj.name:('Module '+sec.mod);
+  const modBand=`<span class="modBand" style="background:var(--blue-l);color:var(--blue);display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px">${modLabel}</span>`;
 
+  // Are we viewing a specific item-folder, or the list of item-folders?
+  const activeItemIdx = window['_item_'+skey];
 
-  // Fetch uploads for this section
+  if(activeItemIdx === undefined || activeItemIdx === null){
+    // ── LIST VIEW: show item-folders ──
+    await renderSectionItemList(skey, sec, modBand, isAdmin);
+  } else {
+    // ── DETAIL VIEW: show upload + files for one item ──
+    await renderSectionItemDetail(skey, sec, modBand, isAdmin, activeItemIdx);
+  }
+}
+
+// ════════════════════════════════════════════════════
+// LIST VIEW — item-folders for a section
+// ════════════════════════════════════════════════════
+async function renderSectionItemList(skey, sec, modBand, isAdmin){
+  const mc=$('mc');
+  const {collection,query,where,getDocs}=window.FS;
+  const items = sec.required||[];
+
+  // Fetch all uploads for this section (to compute per-item file counts)
   let q;
   if(CU.role==='leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('zoneId','==',CU.zoneId));
   else q=query(collection(window.DB,'uploads'),where('sectionId','==',skey));
   const snap=await getDocs(q);
-  const uploads=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadedAt?.seconds||0)-(a.uploadedAt?.seconds||0));
+  const uploads=snap.docs.map(d=>({id:d.id,...d.data()}));
+
+  const relevantUploads = CU.role==='leader' ? uploads : uploads; // admin sees all already filtered by sectionId
+
+  function countForItem(idx){
+    if(CU.role==='leader') return relevantUploads.filter(u=>String(u.checkItem)===String(idx)).length;
+    // admin: count across all zones
+    return relevantUploads.filter(u=>String(u.checkItem)===String(idx)).length;
+  }
+  function zonesCoveredForItem(idx){
+    const zids = new Set(relevantUploads.filter(u=>String(u.checkItem)===String(idx)).map(u=>u.zoneId));
+    return zids.size;
+  }
+
+  const generalCount = relevantUploads.filter(u=>!u.checkItem && u.checkItem!=='0').length;
+
+  const addItemBtn = isAdmin ? `<button class="btn btnP btnSm" onclick="showAddChecklistItem('${skey}')">+ Add Requirement</button>` : '';
+
+  mc.innerHTML = `
+  <div class="pgTitle">${sec.icon} ${esc(sec.label)}</div>
+  ${modBand}
+  <div class="pgSub">${esc(sec.desc||'')}</div>
+
+  <div class="card">
+    <div class="cardHd">📁 Requirements — click any item to upload or view files
+      ${addItemBtn}
+    </div>
+    ${items.length ? items.map((item,idx)=>{
+      const fileCount = countForItem(idx);
+      const zoneCount = isAdmin ? zonesCoveredForItem(idx) : 0;
+      const hasFiles = fileCount > 0;
+      return `<div class="fileRow" style="cursor:pointer;${hasFiles?'border-color:#93c5fd':''}" onclick="openChecklistItem('${skey}',${idx})">
+        <span class="frIco" style="font-size:20px">${hasFiles?'📂':'📁'}</span>
+        <div class="frInfo">
+          <div class="frName" style="white-space:normal">${idx+1}. ${esc(item)}</div>
+          <div class="frMeta">${hasFiles?`${fileCount} file(s) uploaded`:'No files yet'}${isAdmin&&hasFiles?` · ${zoneCount} zone(s)`:''}</div>
+        </div>
+        <div class="frActs">
+          ${hasFiles?'<span class="pill pg">✓ Has files</span>':'<span class="pill px">Empty</span>'}
+          ${isAdmin?`<button class="btnIc" title="Edit requirement text" onclick="event.stopPropagation();editChecklistItem('${skey}',${idx})">✏️</button>
+          <button class="btnIc" title="Delete requirement" onclick="event.stopPropagation();deleteChecklistItem('${skey}',${idx})">🗑️</button>`:''}
+        </div>
+      </div>`;
+    }).join('') : `<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No requirements added yet. ${isAdmin?'Click "+ Add Requirement" above to create one.':'Ask your coordinator to add requirements for this section.'}</div>`}
+
+    <div class="fileRow" style="cursor:pointer;margin-top:10px;border-style:dashed" onclick="openChecklistItem('${skey}','general')">
+      <span class="frIco" style="font-size:20px">📦</span>
+      <div class="frInfo">
+        <div class="frName">General Uploads (not tied to a specific requirement)</div>
+        <div class="frMeta">${generalCount?generalCount+' file(s) uploaded':'No general files yet'}</div>
+      </div>
+      <div class="frActs">${generalCount?'<span class="pill pg">✓ Has files</span>':'<span class="pill px">Empty</span>'}</div>
+    </div>
+  </div>`;
+}
+
+function showAddChecklistItem(skey){
+  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    <div class="mBox">
+      <div class="mHead"><h3>+ Add Requirement</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div class="f2"><label>Requirement Text</label>
+          <textarea id="newItemText" rows="3" placeholder="e.g. RCA for April losses — Furnace operation"></textarea>
+        </div>
+        <div style="font-size:12px;color:var(--gray3)">This becomes a new clickable folder where leaders upload files specific to this requirement.</div>
+      </div>
+      <div class="mFoot">
+        <button class="btn btnO" onclick="closeModal()">Cancel</button>
+        <button class="btn btnP" onclick="saveNewChecklistItem('${skey}')">Add</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function saveNewChecklistItem(skey){
+  const text = $('newItemText').value.trim();
+  if(!text){toast('Enter requirement text.');return;}
+  const sec = window.SECTIONS[skey];
+  const required = [...(sec.required||[]), text];
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'sections',skey),{required},{merge:true});
+  sec.required = required;
+  closeModal();
+  toast('✅ Requirement added.');
+  renderSection(skey);
+}
+
+function editChecklistItem(skey, idx){
+  const sec = window.SECTIONS[skey];
+  const current = (sec.required||[])[idx]||'';
+  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    <div class="mBox">
+      <div class="mHead"><h3>Edit Requirement</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div class="f2"><label>Requirement Text</label>
+          <textarea id="editItemText" rows="3">${esc(current)}</textarea>
+        </div>
+      </div>
+      <div class="mFoot">
+        <button class="btn btnO" onclick="closeModal()">Cancel</button>
+        <button class="btn btnP" onclick="saveEditChecklistItem('${skey}',${idx})">Save</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function saveEditChecklistItem(skey, idx){
+  const text = $('editItemText').value.trim();
+  if(!text){toast('Enter requirement text.');return;}
+  const sec = window.SECTIONS[skey];
+  const required = [...(sec.required||[])];
+  required[idx] = text;
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'sections',skey),{required},{merge:true});
+  sec.required = required;
+  closeModal();
+  toast('✅ Requirement updated.');
+  renderSection(skey);
+}
+
+async function deleteChecklistItem(skey, idx){
+  if(!confirm('Delete this requirement? Files already uploaded against it will remain but lose their label.')) return;
+  const sec = window.SECTIONS[skey];
+  const required = (sec.required||[]).filter((_,i)=>i!==idx);
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'sections',skey),{required},{merge:true});
+  sec.required = required;
+  toast('🗑️ Requirement deleted.');
+  renderSection(skey);
+}
+
+function openChecklistItem(skey, idx){
+  window['_item_'+skey] = idx;
+  renderSection(skey);
+}
+
+function closeChecklistItem(skey){
+  delete window['_item_'+skey];
+  renderSection(skey);
+}
+
+// ════════════════════════════════════════════════════
+// DETAIL VIEW — upload + files for one specific item-folder
+// ════════════════════════════════════════════════════
+async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
+  const mc=$('mc');
+  const {collection,query,where,getDocs}=window.FS;
+  const isGeneral = itemIdx === 'general';
+  const itemText = isGeneral ? 'General Uploads' : (sec.required||[])[itemIdx];
+  const selMonth = window['_sm_'+skey+'_'+itemIdx] || CURMONTH;
+
+  let q;
+  if(CU.role==='leader') q=query(collection(window.DB,'uploads'),where('sectionId','==',skey),where('zoneId','==',CU.zoneId));
+  else q=query(collection(window.DB,'uploads'),where('sectionId','==',skey));
+  const snap=await getDocs(q);
+  let uploads=snap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(b.uploadedAt?.seconds||0)-(a.uploadedAt?.seconds||0));
+
+  // Filter to this specific item
+  uploads = isGeneral
+    ? uploads.filter(u=>!u.checkItem && u.checkItem!=='0')
+    : uploads.filter(u=>String(u.checkItem)===String(itemIdx));
 
   const allMonths=[...new Set(uploads.map(u=>u.month))].sort().reverse();
   const monthUps=uploads.filter(u=>u.month===selMonth);
@@ -716,97 +898,132 @@ async function renderSection(skey){
     zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
   }
 
-  const modObj=Object.values(window.MODULES||{}).find(m=>m.order===sec.mod||m.id==='mod'+sec.mod);
-  const modLabel=modObj?modObj.name:('Module '+sec.mod);
-  const modBand=`<span class="modBand" style="background:var(--blue-l);color:var(--blue);display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px">${modLabel}</span>`;
+  const folderKey = skey+'__'+itemIdx; // unique key for upload widgets on this page
 
-  // Checklist: which items have notes/files for this month
-  const myNotes=CU.role==='leader'?monthUps.filter(u=>u.zoneId===CU.zoneId):monthUps;
-  const covItems=new Set(myNotes.map(u=>u.checkItem||'').filter(Boolean));
-
-  const uploadSection=CU.role!=='consultant'?`
+  const uploadBlock = CU.role!=='consultant' ? `
   <div class="card">
-    <div class="cardHd">📤 Upload for ${esc(sec.label)} ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:''}
-    </div>
+    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:''}</div>
     <div class="f2"><label>Month</label>
-      <select id="upMon-${skey}">
-        ${MONTHS.map((m,i)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
-      </select>
-    </div>
-    <div class="f2"><label>Which checklist item does this file cover? (optional)</label>
-      <select id="upItem-${skey}">
-        <option value="">— General upload (not specific to one item) —</option>
-        ${(sec.required||[]).map((r,i)=>`<option value="${i}">${i+1}. ${esc(r.slice(0,70))}${r.length>70?'...':''}</option>`).join('')}
+      <select id="upMon-${folderKey}">
+        ${MONTHS.map((m)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
       </select>
     </div>
     <div class="f2"><label>Note / Observation (optional)</label>
-      <textarea id="upNote-${skey}" rows="2" placeholder="Add context, reference PPT slide, status note..."></textarea>
+      <textarea id="upNote-${folderKey}" rows="2" placeholder="Add context, reference, status note..."></textarea>
     </div>
-    <div class="uploadZone" id="uz-${skey}" onclick="$('ufi-${skey}').click()"
+    <div class="uploadZone" id="uz-${folderKey}" onclick="$('ufi-${folderKey}').click()"
       ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')"
-      ondrop="dropFiles(event,'${skey}')">
+      ondrop="dropFilesItem(event,'${folderKey}')">
       <div class="uzIco">📎</div>
       <p><b>Tap to select files</b> or drag & drop</p>
       <small>PDF, Excel, Word, Images — any format</small>
     </div>
-    <input type="file" id="ufi-${skey}" multiple style="display:none" onchange="selFiles(this,'${skey}')">
-    <div id="pList-${skey}"></div>
+    <input type="file" id="ufi-${folderKey}" multiple style="display:none" onchange="selFilesItem(this,'${folderKey}')">
+    <div id="pList-${folderKey}"></div>
     <div class="btnRow">
-      <button class="btn btnP" id="upBtn-${skey}" onclick="doUpload('${skey}')">📤 Upload</button>
+      <button class="btn btnP" id="upBtn-${folderKey}" onclick="doUploadItem('${skey}','${itemIdx}','${folderKey}')">📤 Upload</button>
     </div>
-    <div id="upProg-${skey}"></div>
-  </div>`:'' ;
+    <div id="upProg-${folderKey}"></div>
+  </div>`:'';
 
-  const checklistCard=`
-  <div class="card">
-    <div class="cardHd">📋 Checklist — ${esc(sec.label)}
-      <span class="pill ${covItems.size>0?'pg':'px'}">${covItems.size}/${(sec.required||[]).length} covered</span>
-    </div>
-    <div style="font-size:11px;color:var(--gray3);margin-bottom:10px;">Items exactly as asked by consultant. Upload files for the items that are ready.</div>
-    ${(sec.required||[]).map((r,i)=>{
-      const covered=covItems.has(String(i));
-      return`<div class="checkItem">
-        <span class="cIcon">${covered?'✅':'⬜'}</span>
-        <span class="cText"><b>${i+1}.</b> ${esc(r)}</span>
-        <span class="cStatus">${covered?'<span class="pill pg">Done</span>':'<span class="pill px">Pending</span>'}</span>
-      </div>`;
-    }).join('')}
-  </div>`;
-
-  const filesSection=isAdmin?`
+  const filesBlock = isAdmin ? `
   <div class="card">
     <div class="cardHd">Files from All Zones
-      <select onchange="window['_sm_${skey}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
+      <select onchange="window['_sm_${skey}_${itemIdx}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
         ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
       </select>
     </div>
     ${zones.map(z=>{
       const zf=monthUps.filter(u=>u.zoneId===z.id);
-      return`<div style="margin-bottom:14px;">
+      return `<div style="margin-bottom:14px;">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
           <span style="background:var(--navy);color:#fff;border-radius:5px;padding:2px 10px;font-size:11px;font-weight:700;">${esc(z.name)}</span>
           <span class="pill ${zf.length?'pg':'pr'}">${zf.length?zf.length+' file(s)':'⚠ No upload'}</span>
         </div>
-        ${zf.length?zf.map(u=>fRowHTML(u)).join(''):`<div style="padding:9px 12px;background:var(--red-l);border-radius:6px;font-size:12px;color:var(--red);">No files uploaded for ${selMonth}</div>`}
+        ${zf.length?zf.map(u=>fRowHTML(u)).join(''):`<div style="padding:9px 12px;background:var(--red-l);border-radius:6px;font-size:12px;color:var(--red);">No files for ${selMonth}</div>`}
       </div>`;
     }).join('')}
   </div>`:`
   <div class="card">
     <div class="cardHd">Your Uploaded Files
-      <select onchange="window['_sm_${skey}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
+      <select onchange="window['_sm_${skey}_${itemIdx}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
         ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
       </select>
     </div>
-    ${monthUps.length?monthUps.map(u=>fRowHTML(u)).join(''):`<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No files for ${selMonth}. Upload using the form above.</div>`}
+    ${monthUps.length?monthUps.map(u=>fRowHTML(u)).join(''):`<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No files for ${selMonth}.</div>`}
   </div>`;
 
-  mc.innerHTML=`
-  <div class="pgTitle">${sec.icon} ${esc(sec.label)}</div>
+  mc.innerHTML = `
+  <div class="pgTitle" style="display:flex;align-items:center;gap:10px">
+    <button class="btnIc" style="font-size:18px" onclick="closeChecklistItem('${skey}')" title="Back to requirements list">←</button>
+    ${sec.icon} ${esc(sec.label)}
+  </div>
   ${modBand}
-  ${uploadSection}
-  ${checklistCard}
-  ${filesSection}`;
+  <div class="card" style="background:var(--blue-l);border:1px solid #93c5fd">
+    <div style="font-size:13px;font-weight:600;color:var(--navy)">${isGeneral?'📦':'📁'} ${esc(itemText)}</div>
+  </div>
+  ${uploadBlock}
+  ${filesBlock}`;
 }
+
+// ── File handlers for item-detail uploads ──
+async function selFilesItem(inp, folderKey){
+  if(!pendFiles[folderKey]) pendFiles[folderKey]=[];
+  Array.from(inp.files).forEach(f=>pendFiles[folderKey].push({id:uid(),file:f,name:f.name,size:f.size}));
+  renderPend(folderKey); inp.value='';
+}
+function dropFilesItem(e, folderKey){
+  e.preventDefault();
+  $('uz-'+folderKey)?.classList.remove('drag');
+  if(!pendFiles[folderKey]) pendFiles[folderKey]=[];
+  Array.from(e.dataTransfer.files).forEach(f=>pendFiles[folderKey].push({id:uid(),file:f,name:f.name,size:f.size}));
+  renderPend(folderKey);
+}
+
+async function doUploadItem(skey, itemIdx, folderKey){
+  const files = pendFiles[folderKey]||[];
+  if(!files.length){toast('Select files first.');return;}
+  const month = $('upMon-'+folderKey)?.value||CURMONTH;
+  const note = $('upNote-'+folderKey)?.value||'';
+  const checkItem = itemIdx==='general' ? '' : String(itemIdx);
+  const btn=$('upBtn-'+folderKey); const prog=$('upProg-'+folderKey);
+  btn.disabled=true;
+
+  const MAX_B64 = 900*1024;
+  let uploaded=0;
+  for(const pf of files){
+    if(pf.size > MAX_B64){
+      toast(`⚠️ "${pf.name}" is ${bytes(pf.size)} — too large. Max 900KB.`,5000);
+      continue;
+    }
+    prog.innerHTML=`<div style="margin-top:8px;background:var(--gray0);border-radius:6px;padding:9px 12px;font-size:12px;">
+      <div style="margin-bottom:4px;color:var(--navy);font-weight:500;">☁️ Saving ${esc(pf.name)}...</div>
+      <div class="progWrap"><div class="progBar" style="width:80%"></div></div>
+    </div>`;
+    const b64 = await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result);
+      r.onerror=rej;
+      r.readAsDataURL(pf.file);
+    });
+    try{
+      const {collection,addDoc,serverTimestamp}=window.FS;
+      await addDoc(collection(window.DB,'uploads'),{
+        sectionId:skey, name:pf.name, size:pf.size, month, checkItem, note,
+        zoneId:CU.zoneId||'', zoneName:CU.zoneName||'',
+        uploadedById:CU.id, uploadedBy:CU.name,
+        fileData:b64,
+        uploadedAt:serverTimestamp(), uploadedAtStr:new Date().toLocaleDateString()
+      });
+      uploaded++;
+    }catch(e){ toast('Save error: '+e.message); }
+  }
+  pendFiles[folderKey]=[];
+  btn.disabled=false; prog.innerHTML='';
+  if(uploaded>0) toast(`✅ ${uploaded} file(s) saved!`);
+  renderSection(skey);
+}
+
 
 function fRowHTML(u){
   return`<div class="fileRow">
