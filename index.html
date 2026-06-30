@@ -292,155 +292,44 @@ html,body{height:100%;font-family:'Segoe UI',Arial,sans-serif;background:var(--g
 // MODULE STRUCTURE — exactly from consultant report
 // ═══════════════════════════════════════════════════
 // ══ DEFAULT SECTIONS (used to seed Firestore on first run) ══
-window.DEFAULT_SECTIONS = window.DEFAULT_SECTIONS || {
-  // ── MODULE 1: 5S & WORKPLACE ─────────────────────
-  m1_5s: {
-    mod:1, label:'5S Reports', icon:'🏭',
-    required: [
-      'Corrections & improvements against 13 Apr\'26 and 14 Jun\'26 gemba walk feedback — all zones',
-      'Status of action plan in Zone 3,4,5,6 to achieve 5S score of 90',
-      'Cleaning checklist for Non-M/C items / common areas — how many prepared & followed, how many pending (summary table)',
-      'Almirahs organised — zone-wise summary (Complete / In Progress)',
-      'Racks organised — zone-wise summary (Complete / In Progress)',
-      'Shadow boards planned vs made — zone-wise summary',
-      '5S Audit score trend (line diagram) — all Zones',
-      '5S Abnormalities — new Zones 3 to 8',
-      '5S Source of contamination reports — Zones 3,4,5,6,7,8',
-      'Area-wise status: Pipeline colour codes display in all zones',
-      'Area-wise status: Working zone marking on all gauges',
-      'Area-wise status: Direction of rotation marking on all motors',
-      'Proposed redesign of 1 area/zone by CFT (next-level 5S planning)',
-      'Photos: 5S Rules, DOs & DON\'Ts — English & Hindi — every zone',
-      'Colour photos of Zone team at every zone (PPT slide 3)',
-      'Direction marking photos in all Zones',
-    ]
-  },
-  m1_vm: {
-    mod:1, label:'Visual Management', icon:'📋',
-    required: [
-      'Photos: Visual Boards with Action Plans in last row — all Zones (PPT slide 8,9)',
-      'Status of Visual SOPs — all Zones: Operations, Setup/Changeover, Routine Inspection',
-      'Monthly KPIs with traffic lights & Daily KPI boards with trend lines — all Zones/selected Zones',
-      'Losses data (Stack diagrams) — all Zones / selected Zones',
-      'Losses analysis: RCA / WHY-WHY for Top 3 losses & Red KPIs — March, April, May\'26 — all Zones',
-      'Status of Phase 1 Visual Management implementation in new Zones 4 to 8',
-      'Quality Board & Maintenance Board photos (Shiv & Devendra to update)',
-      'RCAs for April & May major losses — 6 selected operations (Rakesh Jha PPT slide 7)',
-      'Standard Visual Management board design & implementation photos — all Zones',
-      'Visual Standards / Checklists in all Major operations — Input / During / Output (Shiv Mohan)',
-      'Display of downtime % — operation-wise monthly — every zone (Rakesh Singh)',
-      'Display of daily downtime (breakdown) losses & monthly losses trend — each operation (Rakesh Singh)',
-    ]
-  },
-  m1_gemba: {
-    mod:1, label:'Gemba Huddle', icon:'👣',
-    required: [
-      'May\'26 Gemba Huddle report (not received — marked by consultant)',
-    ]
-  },
-  // ── MODULE 2: OPERATIONS EXCELLENCE ──────────────
-  m2_oee: {
-    mod:2, label:'OEE', icon:'📊',
-    required: [
-      'OEE, Availability, Performance, Quality trend & Major losses DATA — VA Tech, Furnaces, Molding M/Cs — till May\'26 (STANDARD FORMAT, incl. Performance Losses)',
-      'RCA & Improvement action plans for April & May major losses — Furnaces & Molding M/Cs (MUST)',
-      'FY26-27 Targets: OEE, Availability, Performance, Quality, Major Losses — Induction Furnace & Molding M/Cs (PPT slide 12,13)',
-      'Improvement action plans to achieve FY26-27 Q2 & Q3 targets (PPT slide 14 format)',
-    ]
-  },
-  m2_skill: {
-    mod:2, label:'Skill Matrix', icon:'🎓',
-    required: [
-      'Training status as per Training Plan — as on May\'26 — FOR ALL OPERATIONS',
-      'Verification of training effectiveness — status of each trained person in every zone/operation',
-    ]
-  },
-  m2_kanban: {
-    mod:2, label:'KANBAN', icon:'🔄',
-    required: [
-      'Photos of Kanban Posts for both items in their locations',
-      'Photos of Kanban Cards for both items',
-      'Since when KANBAN practice started by Imran and Prashant — confirm date',
-    ]
-  },
-  m2_pfmea: {
-    mod:2, label:'PFMEA Projects', icon:'⚠️',
-    required: [
-      'Complete FMEA sheet — Kongsberg: RPNs for all process steps (Failure Modes > Cause > Current Control), corrective & improvement action plans for high-risk/high RPN items',
-      'Complete FMEA sheet — Valmet: RPNs for all process steps (Failure Modes > Cause > Current Control), corrective & improvement action plans for high-risk/high RPN items',
-    ]
-  },
-  m2_constraint: {
-    mod:2, label:'Constraint Management', icon:'🔩',
-    required: [
-      'Project team details — who has been formed (team members list)',
-      'Data collected in Constraint Management worksheets for 2 bottleneck operations (PPT slide 29,30)',
-    ]
-  },
-  m2_msa: {
-    mod:2, label:'MSA', icon:'📐',
-    required: [
-      'Status of MSAs conducted so far — Gage R&R, Attribute MSA — as per plan',
-      'Results of MSAs conducted — summary table',
-    ]
-  },
-  m2_spc: {
-    mod:2, label:'SPC', icon:'📈',
-    required: [
-      'Process capability (Cp, Cpk) studies conducted — monthly plan vs actual',
-      'Measured & collected data of selected critical parameter + Cp, Cpk values till April\'26',
-      'Individual Control Charts developed — data, UCL/LCL values, charts (how many done)',
-    ]
-  },
-  m2_tpm: {
-    mod:2, label:'TPM AM', icon:'🔧',
-    required: [
-      'Abnormality Tagging status (identified, closed) — month-wise till May\'26 + 2-year type-wise summary (PPT slide 27)',
-      'Source of contamination (photos) & Hard-to-access areas (photos) — improvement action status till May\'26',
-      'MTBF / MTTR / % Downtime / OEE — monthly data trend till May\'26',
-      'RCA / Why-Why + corrective/improvement action plan for Major Breakdowns (>1 hour) — Jan to May\'26',
-      'TPM AM Level 4: Use of General Inspection checklist by Operators from 15 May\'26 — photo (PPT slide 23,24,25)',
-      'Countermeasure instruction for each General Inspection checkpoint — FOR ALL original check points (Operators & Maintenance separately)',
-      'Operators trained on all Countermeasures — training evidence & records — photo',
-      'Register opened: Operators writing abnormalities/deviations — photo',
-      'Time records for each General Inspection point (1-week data May/Jun\'26) — FOR ALL originally prepared check points',
-    ]
-  },
-  m2_lpa: {
-    mod:2, label:'Layered Process Audits', icon:'🔍',
-    required: [
-      'LPA Champion identified — name',
-      'Pilot area / Operation selected to start LPA',
-      'Auditors nominated at all levels: Junior, Middle, Senior Management (Zone Leaders, Engineers, HODs of Quality, Production, Maintenance)',
-      'Frequency plan: who audits when — daily, weekly, bi-weekly, monthly',
-      'Method of tracking audit compliance by nominated auditors',
-      'Audit checklists for various levels/layers',
-      'Process for communicating, publishing & storing Audit reports and NCs (SOP)',
-    ]
-  },
-  m2_qa: {
-    mod:2, label:'Quality Alerts', icon:'🚨',
-    required: [
-      'Decision on Quality Alerts process — has it been prepared?',
-      'SOP: Source of Quality Alerts, which concerns lead to alerts, format, who prepares, where to display, how to communicate to all, where to preserve after few months',
-    ]
-  },
-  m2_kaizen: {
-    mod:2, label:'Kaizen Events', icon:'💡',
-    required: [
-      'Plan vs Status: how many Kaizen events conducted against Q1 plan (PPT slide 38)',
-      'Single-page Kaizen forms for all Kaizen events conducted (PPT slide 32 format)',
-    ]
-  },
-  m2_proj: {
-    mod:2, label:'Master Projects FY26-27', icon:'📁',
-    required: [
-      'Master List of all FY26-27 Projects — status not received',
-      'Data on who has been trained on which tools in last 4 years (everyone should be in 2-3 projects)',
-    ]
-  },
-};
-;
+window.DEFAULT_SECTIONS = window.DEFAULT_SECTIONS || {};
+
+// ════════════════════════════════════════════════════
+// TOOL LIBRARY — pick a tool name when creating a module/section,
+// and its icon fills in automatically. Admin can still type a custom
+// name if the tool isn't in this list (icon defaults to a folder).
+// ════════════════════════════════════════════════════
+window.TOOL_LIBRARY = [
+  {name:'5S', icon:'🏭'},
+  {name:'Visual Management', icon:'📋'},
+  {name:'Gemba Walk', icon:'👣'},
+  {name:'KPI', icon:'📊'},
+  {name:'OEE', icon:'📈'},
+  {name:'Losses Analysis', icon:'📉'},
+  {name:'RCA / Why-Why', icon:'🔍'},
+  {name:'Skill Matrix', icon:'🎓'},
+  {name:'KANBAN', icon:'🔄'},
+  {name:'PFMEA', icon:'⚠️'},
+  {name:'Constraint Management', icon:'🔩'},
+  {name:'MSA', icon:'📐'},
+  {name:'SPC', icon:'📏'},
+  {name:'TPM AM', icon:'🔧'},
+  {name:'Layered Process Audits', icon:'🧐'},
+  {name:'Quality Alerts', icon:'🚨'},
+  {name:'Kaizen Events', icon:'💡'},
+  {name:'Six Sigma', icon:'🎯'},
+  {name:'Project Tracker', icon:'📁'},
+  {name:'Audit Score', icon:'📝'},
+  {name:'Training', icon:'🧑\u200d🏫'},
+  {name:'Maintenance', icon:'🛠️'},
+  {name:'Safety', icon:'🦺'},
+  {name:'Custom / Other', icon:'📦'},
+];
+function findToolIcon(name){
+  const t = window.TOOL_LIBRARY.find(t=>t.name.toLowerCase()===String(name||'').toLowerCase());
+  return t ? t.icon : '📦';
+}
+
 
 // Live sections loaded from Firestore — updated by loadSections()
 window.SECTIONS = window.SECTIONS || {...(window.DEFAULT_SECTIONS||{})};
@@ -2103,11 +1992,14 @@ async function renderModulesAdmin(){
 
   <div class="card">
     <div class="cardHd">Modules
-      <button class="btn btnP btnSm" onclick="showModModal(null)">+ Add Module</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btnP btnSm" onclick="showModModal(null)">+ Add Module</button>
+        ${mods.length?`<button class="btn btnD btnSm" onclick="resetAllModules()">🗑️ Reset All</button>`:''}
+      </div>
     </div>
     ${mods.length?mods.map(m=>`
     <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--gray2);border-radius:7px;margin-bottom:8px;background:var(--gray0);">
-      <span style="font-size:18px;">📦</span>
+      <span style="font-size:18px;">${m.icon||'📦'}</span>
       <div style="flex:1;">
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${esc(m.name)}</div>
         <div style="font-size:11px;color:var(--gray3)">Order: ${m.order||1} · Color: ${m.colorKey||'blue'} · ${secs.filter(s=>sectionBelongsToModule(s,m)).length} sections</div>
@@ -2143,17 +2035,35 @@ async function renderModulesAdmin(){
 }
 
 function showModModal(m){
-  // Auto-suggest next available order number to avoid collisions between modules
   const existingOrders = Object.values(window.MODULES||{}).map(mm=>mm.order||0);
   const nextOrder = existingOrders.length ? Math.max(...existingOrders)+1 : 1;
   const suggestedOrder = m?.order || nextOrder;
+  const tools = window.TOOL_LIBRARY||[];
+  const currentToolMatch = tools.find(t=>t.name===m?.name);
+
   $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
     <div class="mBox">
       <div class="mHead"><h3>${m?'Edit Module':'Add Module'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
       <div class="mBody">
-        <div class="f2"><label>Module Name</label><input id="mMName" value="${esc(m?.name||'')}" placeholder="e.g. Quality Management"></div>
+        <div class="f2"><label>Select Tool</label>
+          <select id="mMTool" onchange="onModToolChange()">
+            <option value="">— Choose a tool —</option>
+            ${tools.map(t=>`<option value="${esc(t.name)}" data-icon="${t.icon}"${currentToolMatch?.name===t.name?' selected':''}>${t.icon} ${esc(t.name)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="f2" id="mMCustomWrap" style="${m && !currentToolMatch ? '' : (m?.name==='Custom / Other'||(!m)?'':'display:none')}">
+          <label>Module Name</label>
+          <input id="mMName" value="${esc(m && !currentToolMatch ? m.name : '')}" placeholder="Type module name (used if 'Custom / Other' selected, or to override)">
+        </div>
+        <div class="f2" style="display:flex;align-items:center;gap:10px;">
+          <div>
+            <label style="display:block;margin-bottom:5px;">Icon (auto-filled)</label>
+            <div id="mMIconPreview" style="font-size:28px;width:48px;height:48px;display:flex;align-items:center;justify-content:center;background:var(--gray1);border-radius:8px;">${m?.icon||currentToolMatch?.icon||'📦'}</div>
+          </div>
+          <input type="hidden" id="mMIcon" value="${m?.icon||currentToolMatch?.icon||'📦'}">
+        </div>
         <div class="f2"><label>Display Order (1 = first in sidebar)</label><input type="number" id="mMOrder" value="${suggestedOrder}" placeholder="e.g. 3" min="1"></div>
-        <div style="font-size:11px;color:var(--gray3);margin-top:-8px;margin-bottom:10px;">Auto-suggested as the next free number. Each module should have a unique order.</div>
+        <div style="font-size:11px;color:var(--gray3);margin-top:-8px;margin-bottom:10px;">Auto-suggested as the next free number. Each module must have a unique order.</div>
         <div class="f2"><label>Color</label><select id="mMColor">
           ${['green','purple','blue','amber','red','navy'].map(c=>`<option value="${c}"${m?.colorKey===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}
         </select></div>
@@ -2163,13 +2073,33 @@ function showModModal(m){
   </div>`;
 }
 
+function onModToolChange(){
+  const sel = $('mMTool');
+  const opt = sel.options[sel.selectedIndex];
+  const icon = opt?.dataset?.icon || '📦';
+  const toolName = sel.value;
+  $('mMIconPreview').textContent = icon;
+  $('mMIcon').value = icon;
+  const customWrap = $('mMCustomWrap');
+  if(toolName === 'Custom / Other' || toolName === ''){
+    customWrap.style.display = '';
+  } else {
+    customWrap.style.display = 'none';
+    // Pre-fill the hidden name field with the tool name so saveMod can use it
+    if(!$('mMName')) return;
+    $('mMName').value = toolName;
+  }
+}
+
 async function saveMod(editId){
-  const name=$('mMName').value.trim();
+  const toolSel = $('mMTool')?.value || '';
+  const customName = $('mMName')?.value?.trim() || '';
+  const name = (toolSel && toolSel !== 'Custom / Other') ? toolSel : customName;
+  const icon = $('mMIcon')?.value || findToolIcon(name);
   const order=parseInt($('mMOrder').value)||1;
   const colorKey=$('mMColor').value;
-  if(!name){toast('Enter module name.');return;}
+  if(!name){toast('Select a tool or enter a custom module name.');return;}
 
-  // CRITICAL: prevent duplicate order numbers — this caused sections to merge across modules
   const existing = Object.values(window.MODULES||{});
   const clash = existing.find(m => (m.order===order) && m.id!==editId);
   if(clash){
@@ -2178,63 +2108,116 @@ async function saveMod(editId){
   }
 
   const {doc,setDoc,collection,addDoc}=window.FS;
-  if(editId) await setDoc(doc(window.DB,'modules',editId),{name,order,colorKey},{merge:true});
-  else await addDoc(collection(window.DB,'modules'),{name,order,colorKey});
+  if(editId) await setDoc(doc(window.DB,'modules',editId),{name,order,colorKey,icon},{merge:true});
+  else await addDoc(collection(window.DB,'modules'),{name,order,colorKey,icon});
   closeModal();toast('✅ Module saved.');
   await loadSectionsAndModules();
   renderModulesAdmin();
 }
 
+async function resetAllModules(){
+  if(!confirm('This will permanently delete ALL modules and ALL sections (and their checklist items). Uploaded files will remain in the database but will no longer be linked to any visible section. This cannot be undone. Continue?'))return;
+  if(!confirm('Are you absolutely sure? Type OK in the next box only if you really want to wipe everything.'))return;
+  const {collection,getDocs,doc,deleteDoc}=window.FS;
+  const [modSnap,secSnap]=await Promise.all([
+    getDocs(collection(window.DB,'modules')),
+    getDocs(collection(window.DB,'sections'))
+  ]);
+  for(const d of secSnap.docs) await deleteDoc(doc(window.DB,'sections',d.id));
+  for(const d of modSnap.docs) await deleteDoc(doc(window.DB,'modules',d.id));
+  window.SECTIONS = {};
+  window.MODULES = {};
+  toast('🗑️ All modules and sections cleared. Start fresh by adding a new module.', 5000);
+  buildSidebar();
+  renderModulesAdmin();
+}
+
 async function delModule(id){
-  if(!confirm('Delete this module? Sections inside it will remain but lose their module link.'))return;
-  const {doc,deleteDoc}=window.FS;
+  if(!confirm('Delete this module? Its sections will also be deleted since they cannot exist without a module.'))return;
+  const {doc,deleteDoc,collection,getDocs,query,where}=window.FS;
+  // Delete all sections that belong to this module
+  const secsToDelete = Object.values(window.SECTIONS||{}).filter(s=>s.modId===id);
+  for(const s of secsToDelete){
+    await deleteDoc(doc(window.DB,'sections',s.id));
+  }
   await deleteDoc(doc(window.DB,'modules',id));
-  toast('Module deleted.');
+  toast('Module and its sections deleted.');
   await loadSectionsAndModules();
   renderModulesAdmin();
 }
 
 function showSecModal(s, modId, modOrder){
-  const ICONS=['📊','📉','🔍','🏭','⚠️','🧹','👣','📋','🎓','🔄','🔩','📐','📈','🔧','💡','📁','🚨','📝','📌','🎯','🔎','📦','⚙️'];
-  const existingItems=(s?.required||[]).join('\n');
+  const tools = window.TOOL_LIBRARY||[];
+  const currentToolMatch = tools.find(t=>t.name===s?.label);
+
   $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
-    <div class="mBox" style="max-width:600px">
+    <div class="mBox" style="max-width:520px">
       <div class="mHead"><h3>${s?'Edit Section':'Add Section'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
       <div class="mBody">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div class="f2"><label>Section Name</label><input id="sName" value="${esc(s?.label||'')}" placeholder="e.g. Quality Alerts"></div>
-          <div class="f2"><label>Short Description</label><input id="sDesc" value="${esc(s?.desc||'')}" placeholder="e.g. Alert SOP and process"></div>
-          <div class="f2"><label>Icon</label><select id="sIcon">${ICONS.map(ic=>`<option value="${ic}"${s?.icon===ic?' selected':''}>${ic}</option>`).join('')}</select></div>
-          <div class="f2"><label>Display Order</label><input type="number" id="sOrder" value="${s?.order||''}" placeholder="e.g. 5" min="1"></div>
+        <div class="f2"><label>Select Tool / Topic</label>
+          <select id="sTool" onchange="onSecToolChange()">
+            <option value="">— Choose a tool —</option>
+            ${tools.map(t=>`<option value="${esc(t.name)}" data-icon="${t.icon}"${currentToolMatch?.name===t.name?' selected':''}>${t.icon} ${esc(t.name)}</option>`).join('')}
+          </select>
         </div>
-        <div class="f2"><label>Section ID (no spaces, e.g. m3_quality)</label>
-          <input id="sId" value="${esc(s?.id||'')}" placeholder="m3_quality" ${s?'readonly style="background:var(--gray1)"':''}></div>
-        <div class="f2"><label>Checklist Items — one per line (these appear as required items for leaders to upload)</label>
-          <textarea id="sItems" rows="8" placeholder="Enter each required item on a new line...">${esc(existingItems)}</textarea></div>
+        <div class="f2" id="sCustomWrap" style="${s && !currentToolMatch ? '' : 'display:none'}">
+          <label>Section Name</label>
+          <input id="sName" value="${esc(s && !currentToolMatch ? s.label : '')}" placeholder="Type section name (used if 'Custom / Other' selected)">
+        </div>
+        <div class="f2" style="display:flex;align-items:center;gap:10px;">
+          <div>
+            <label style="display:block;margin-bottom:5px;">Icon (auto-filled)</label>
+            <div id="sIconPreview" style="font-size:24px;width:42px;height:42px;display:flex;align-items:center;justify-content:center;background:var(--gray1);border-radius:8px;">${s?.icon||currentToolMatch?.icon||'📦'}</div>
+          </div>
+          <input type="hidden" id="sIcon" value="${s?.icon||currentToolMatch?.icon||'📦'}">
+        </div>
+        <div class="f2"><label>Short Description (optional)</label><input id="sDesc" value="${esc(s?.desc||'')}" placeholder="e.g. Operation-wise monthly KPI"></div>
+        <div class="f2"><label>Display Order</label><input type="number" id="sOrder" value="${s?.order||1}" placeholder="e.g. 1" min="1"></div>
+        <div class="f2"><label>Section ID (no spaces)</label>
+          <input id="sId" value="${esc(s?.id||'')}" placeholder="auto-generated from name" ${s?'readonly style="background:var(--gray1)"':''}></div>
+        <div style="font-size:11px;color:var(--gray3);">Requirements/checklist items are added later, directly inside this section, using the "+ Add Requirement" button.</div>
       </div>
       <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveSec('${s?.id||''}','${modId}',${modOrder})">Save Section</button></div>
     </div>
   </div>`;
 }
 
+function onSecToolChange(){
+  const sel = $('sTool');
+  const opt = sel.options[sel.selectedIndex];
+  const icon = opt?.dataset?.icon || '📦';
+  const toolName = sel.value;
+  $('sIconPreview').textContent = icon;
+  $('sIcon').value = icon;
+  const customWrap = $('sCustomWrap');
+  if(toolName === 'Custom / Other' || toolName === ''){
+    customWrap.style.display = '';
+  } else {
+    customWrap.style.display = 'none';
+  }
+}
+
 async function saveSec(editId, modId, modOrder){
-  const label=$('sName').value.trim();
-  const desc=$('sDesc').value.trim();
-  const icon=$('sIcon').value;
-  const order=parseInt($('sOrder').value)||1;
-  const sId=$('sId').value.trim().replace(/\s+/g,'_').toLowerCase();
-  const itemsRaw=$('sItems').value;
-  const required=itemsRaw.split('\n').map(l=>l.trim()).filter(Boolean);
-  if(!label){toast('Enter section name.');return;}
-  if(!sId){toast('Enter a section ID.');return;}
+  const toolSel = $('sTool')?.value || '';
+  const customName = $('sName')?.value?.trim() || '';
+  const label = (toolSel && toolSel !== 'Custom / Other') ? toolSel : customName;
+  const icon = $('sIcon')?.value || findToolIcon(label);
+  const desc = $('sDesc').value.trim();
+  const order = parseInt($('sOrder').value)||1;
+  let sId = $('sId').value.trim();
+  if(!sId) sId = label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  if(!label){toast('Select a tool or enter a custom section name.');return;}
+  if(!sId){toast('Could not generate a section ID — type one manually.');return;}
+
   const {doc,setDoc}=window.FS;
-  // modId = the unique module document ID (reliable link, no collisions)
-  // mod = order number (kept for backward compatibility with old data only)
+  const existingSec = window.SECTIONS[sId];
+  const required = existingSec?.required || []; // preserve any existing requirements when editing
   await setDoc(doc(window.DB,'sections',sId),{id:sId,label,desc,icon,order,mod:modOrder,modId,required},{merge:true});
   closeModal();toast('✅ Section saved.');
   await loadSectionsAndModules();
   renderModulesAdmin();
 }
+
 
 async function delSection(id){
   if(!confirm('Delete this section? All uploaded files for this section remain but the section will no longer appear.'))return;
