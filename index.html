@@ -450,6 +450,11 @@ window.MODULES = window.MODULES || {}; // moduleId → {id, name, order}
 function getSectionKeys(){ return Object.keys(window.SECTIONS); }
 function getModKeys(modNum){ return getSectionKeys().filter(k=>window.SECTIONS[k].mod===modNum); }
 function getAllModNums(){ return [...new Set(getSectionKeys().map(k=>window.SECTIONS[k].mod))].sort(); }
+function sectionBelongsToModule(s, m){
+  if(s.modId) return s.modId === m.id; // reliable match
+  return s.mod === m.order || s.mod === parseInt(m.order); // legacy fallback
+}
+
 const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const NOW=new Date();
 const CURMONTH=`${MONTHS[NOW.getMonth()]}-${String(NOW.getFullYear()).slice(-2)}`;
@@ -526,6 +531,41 @@ async function loadSectionsAndModules(){
     } else {
       window.MODULES={};
       modSnap.docs.forEach(d=>window.MODULES[d.id]={...d.data(),id:d.id});
+    }
+
+    // ── ONE-TIME AUTO-REPAIR: fix duplicate module order numbers ──
+    // (This was a bug — multiple modules could share the same order, causing
+    //  their sections to incorrectly merge together. This repairs it permanently.)
+    const allMods = Object.values(window.MODULES);
+    const seenOrders = {};
+    let neededRepair = false;
+    for(const m of allMods){
+      const ord = m.order||1;
+      if(seenOrders[ord] !== undefined){
+        // Collision found — reassign this module to the next free order
+        let newOrder = Math.max(...allMods.map(mm=>mm.order||0)) + 1;
+        await setDoc(doc(window.DB,'modules',m.id),{order:newOrder},{merge:true});
+        m.order = newOrder;
+        neededRepair = true;
+        console.warn(`Auto-repaired module "${m.name}": order changed to ${newOrder} (was colliding with another module)`);
+      } else {
+        seenOrders[ord] = m.id;
+      }
+    }
+
+    // Re-link every section to its module by modId (permanent, collision-proof fix)
+    // Sections without modId get matched by their CURRENT mod number once, then saved with modId forever after
+    for(const sec of Object.values(window.SECTIONS)){
+      if(!sec.modId){
+        const matchingMod = allMods.find(m => (m.order===sec.mod));
+        if(matchingMod){
+          sec.modId = matchingMod.id;
+          await setDoc(doc(window.DB,'sections',sec.id),{modId:matchingMod.id},{merge:true});
+        }
+      }
+    }
+    if(neededRepair){
+      toast('🔧 Fixed a module numbering conflict automatically.', 4000);
     }
   }catch(e){
     console.warn('loadSections error:',e);
@@ -1528,7 +1568,7 @@ async function showZoneSectionsModal(zoneId){
   const visibleMods = allowedModules ? mods.filter(m=>allowedModules.includes(m.order)) : mods;
 
   const body = visibleMods.map(m=>{
-    const modSecs = secs.filter(s=>s.mod===m.order).sort((a,b)=>(a.order||0)-(b.order||0));
+    const modSecs = secs.filter(s=>sectionBelongsToModule(s,m)).sort((a,b)=>(a.order||0)-(b.order||0));
     return `<div style="margin-bottom:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">${esc(m.name)}</div>
       ${modSecs.map(s=>{
@@ -1675,7 +1715,7 @@ async function showDeptSectionsModal(deptId){
   const visibleMods = allowedModules ? mods.filter(m=>allowedModules.includes(m.order)) : mods;
 
   const body = visibleMods.map(m=>{
-    const modSecs = secs.filter(s=>s.mod===m.order).sort((a,b)=>(a.order||0)-(b.order||0));
+    const modSecs = secs.filter(s=>sectionBelongsToModule(s,m)).sort((a,b)=>(a.order||0)-(b.order||0));
     return `<div style="margin-bottom:14px;">
       <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">${esc(m.name)}</div>
       ${modSecs.map(s=>{
@@ -2070,7 +2110,7 @@ async function renderModulesAdmin(){
       <span style="font-size:18px;">📦</span>
       <div style="flex:1;">
         <div style="font-size:13px;font-weight:700;color:var(--navy)">${esc(m.name)}</div>
-        <div style="font-size:11px;color:var(--gray3)">Order: ${m.order||1} · Color: ${m.colorKey||'blue'} · ${secs.filter(s=>s.mod===m.order||s.mod===parseInt(m.order)).length} sections</div>
+        <div style="font-size:11px;color:var(--gray3)">Order: ${m.order||1} · Color: ${m.colorKey||'blue'} · ${secs.filter(s=>sectionBelongsToModule(s,m)).length} sections</div>
       </div>
       <button class="btn btnO btnSm" onclick='showModModal(${JSON.stringify({id:m.id,...m}).replace(/"/g,"&quot;")})'>Edit</button>
       <button class="btn btnD btnSm" onclick="delModule('${m.id}')">Delete</button>
@@ -2078,7 +2118,7 @@ async function renderModulesAdmin(){
   </div>
 
   ${mods.map(m=>{
-    const modSecs=secs.filter(s=>s.mod===m.order||s.mod===parseInt(m.order)).sort((a,b)=>(a.order||0)-(b.order||0));
+    const modSecs=secs.filter(s=>sectionBelongsToModule(s,m)).sort((a,b)=>(a.order||0)-(b.order||0));
     return `<div class="card">
       <div class="cardHd" style="color:var(--navy)">
         📦 ${esc(m.name)} — Sections
@@ -2103,12 +2143,17 @@ async function renderModulesAdmin(){
 }
 
 function showModModal(m){
+  // Auto-suggest next available order number to avoid collisions between modules
+  const existingOrders = Object.values(window.MODULES||{}).map(mm=>mm.order||0);
+  const nextOrder = existingOrders.length ? Math.max(...existingOrders)+1 : 1;
+  const suggestedOrder = m?.order || nextOrder;
   $('modRoot').innerHTML=`<div class="mOvr ctr" id="mOv" onclick="if(event.target.id==='mOv')closeModal()">
     <div class="mBox">
       <div class="mHead"><h3>${m?'Edit Module':'Add Module'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
       <div class="mBody">
         <div class="f2"><label>Module Name</label><input id="mMName" value="${esc(m?.name||'')}" placeholder="e.g. Quality Management"></div>
-        <div class="f2"><label>Display Order (1 = first in sidebar)</label><input type="number" id="mMOrder" value="${m?.order||''}" placeholder="e.g. 3" min="1"></div>
+        <div class="f2"><label>Display Order (1 = first in sidebar)</label><input type="number" id="mMOrder" value="${suggestedOrder}" placeholder="e.g. 3" min="1"></div>
+        <div style="font-size:11px;color:var(--gray3);margin-top:-8px;margin-bottom:10px;">Auto-suggested as the next free number. Each module should have a unique order.</div>
         <div class="f2"><label>Color</label><select id="mMColor">
           ${['green','purple','blue','amber','red','navy'].map(c=>`<option value="${c}"${m?.colorKey===c?' selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}
         </select></div>
@@ -2123,6 +2168,15 @@ async function saveMod(editId){
   const order=parseInt($('mMOrder').value)||1;
   const colorKey=$('mMColor').value;
   if(!name){toast('Enter module name.');return;}
+
+  // CRITICAL: prevent duplicate order numbers — this caused sections to merge across modules
+  const existing = Object.values(window.MODULES||{});
+  const clash = existing.find(m => (m.order===order) && m.id!==editId);
+  if(clash){
+    toast(`⚠️ Order ${order} is already used by "${clash.name}". Choose a different number.`,5000);
+    return;
+  }
+
   const {doc,setDoc,collection,addDoc}=window.FS;
   if(editId) await setDoc(doc(window.DB,'modules',editId),{name,order,colorKey},{merge:true});
   else await addDoc(collection(window.DB,'modules'),{name,order,colorKey});
@@ -2158,12 +2212,12 @@ function showSecModal(s, modId, modOrder){
         <div class="f2"><label>Checklist Items — one per line (these appear as required items for leaders to upload)</label>
           <textarea id="sItems" rows="8" placeholder="Enter each required item on a new line...">${esc(existingItems)}</textarea></div>
       </div>
-      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveSec('${s?.id||''}',${modOrder})">Save Section</button></div>
+      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveSec('${s?.id||''}','${modId}',${modOrder})">Save Section</button></div>
     </div>
   </div>`;
 }
 
-async function saveSec(editId, modOrder){
+async function saveSec(editId, modId, modOrder){
   const label=$('sName').value.trim();
   const desc=$('sDesc').value.trim();
   const icon=$('sIcon').value;
@@ -2174,7 +2228,9 @@ async function saveSec(editId, modOrder){
   if(!label){toast('Enter section name.');return;}
   if(!sId){toast('Enter a section ID.');return;}
   const {doc,setDoc}=window.FS;
-  await setDoc(doc(window.DB,'sections',sId),{id:sId,label,desc,icon,order,mod:modOrder,required},{merge:true});
+  // modId = the unique module document ID (reliable link, no collisions)
+  // mod = order number (kept for backward compatibility with old data only)
+  await setDoc(doc(window.DB,'sections',sId),{id:sId,label,desc,icon,order,mod:modOrder,modId,required},{merge:true});
   closeModal();toast('✅ Section saved.');
   await loadSectionsAndModules();
   renderModulesAdmin();
