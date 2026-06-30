@@ -551,6 +551,14 @@ async function login(){
     $('appScr').style.display='flex';
     $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader'}[CU.role]||CU.role;
     $('topUser').textContent=CU.name;
+    // Load this leader's zone permissions (module/section visibility)
+    if(CU.role==='leader' && CU.zoneId){
+      try{
+        const {doc,getDoc}=window.FS;
+        const zSnap=await getDoc(doc(window.DB,'zones',CU.zoneId));
+        if(zSnap.exists()) window.MY_ZONE = {id:zSnap.id, ...zSnap.data()};
+      }catch(e){console.warn('zone perm load error',e);}
+    }
     // Admin items shown via buildSidebar() which checks CU.role
     buildBnav();
     goto('dash');
@@ -607,36 +615,90 @@ async function renderDash(){
   const {collection,query,where,getDocs}=window.FS;
   const isAdmin=CU.role!=='leader';
 
+  // Determine which sections THIS user is allowed to see (zone-filtered for leaders)
+  const myZone = (CU.role==='leader') ? window.MY_ZONE : null;
+  const allowedModules = myZone ? myZone.allowedModules : null;
+  const allowedSections = myZone ? myZone.allowedSections : null;
+
+  function isSectionVisible(s){
+    if(allowedModules && !allowedModules.includes(s.mod)) return false;
+    if(allowedSections && !allowedSections.includes(s.id)) return false;
+    return true;
+  }
+
+  const visibleSectionKeys = Object.values(window.SECTIONS||{}).filter(isSectionVisible).map(s=>s.id);
+
   let uQ;
   if(CU.role==='leader') uQ=query(collection(window.DB,'uploads'),where('zoneId','==',CU.zoneId),where('month','==',CURMONTH));
   else uQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
   const uSnap=await getDocs(uQ);
-  const uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
+  let uploads=uSnap.docs.map(d=>({id:d.id,...d.data()}));
 
+  // For leaders, only count sections they're allowed to see
+  if(CU.role==='leader'){
+    uploads = uploads.filter(u=>visibleSectionKeys.includes(u.sectionId));
+  }
+
+  const totalSections = CU.role==='leader' ? visibleSectionKeys.length : getSectionKeys().length;
   const coveredSections=new Set(uploads.map(u=>u.sectionId)).size;
-  const totalSections=getSectionKeys().length;
-  const pct=Math.round(coveredSections/totalSections*100);
+  const pct = totalSections ? Math.round(coveredSections/totalSections*100) : 0;
 
-  // Module coverage
-  const m1cov=getModKeys(1).filter(k=>uploads.find(u=>u.sectionId===k)).length;
-  const m2cov=getModKeys(2).filter(k=>uploads.find(u=>u.sectionId===k)).length;
+  // Build module cards dynamically based on what modules exist (and are visible to this user)
+  const allModNums = getAllModNums();
+  const visibleModNums = CU.role==='leader'
+    ? (allowedModules ? allModNums.filter(n=>allowedModules.includes(n)) : allModNums)
+    : allModNums;
 
-  // Zone matrix (admin only)
+  function modName(num){
+    const found = Object.values(window.MODULES||{}).find(m=>m.order===num||m.id==='mod'+num);
+    return found ? found.name : 'Module '+num;
+  }
+  function modColorKey(num){
+    const found = Object.values(window.MODULES||{}).find(m=>m.order===num||m.id==='mod'+num);
+    return found?.colorKey||'blue';
+  }
+  const colorVar = {green:'var(--green)',purple:'var(--purple)',blue:'var(--blue)',amber:'var(--amber)',red:'var(--red)',navy:'var(--navy)'};
+
+  const modCardsHTML = visibleModNums.map(num=>{
+    let modKeys = getModKeys(num);
+    if(CU.role==='leader' && allowedSections) modKeys = modKeys.filter(k=>allowedSections.includes(k));
+    const modCov = modKeys.filter(k=>uploads.find(u=>u.sectionId===k)).length;
+    const modPct = modKeys.length ? Math.round(modCov/modKeys.length*100) : 0;
+    const color = colorVar[modColorKey(num)]||'var(--blue)';
+    const sectionNames = modKeys.map(k=>window.SECTIONS[k]?.label).filter(Boolean).join(' · ');
+    const firstKey = modKeys[0];
+    return `<div class="modCard" style="background:${color}12;border-color:${color}55" ${firstKey?`onclick="goto('${firstKey}')"`:''}>
+      <div class="modCardTop">
+        <div class="modCardTitle" style="color:${color}">${esc(modName(num))}</div>
+        <span class="pill" style="background:${color}22;color:${color}">${modCov}/${modKeys.length} sections</span>
+      </div>
+      <div class="modCardSubs">${esc(sectionNames)||'No sections yet'}</div>
+      <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:${color};width:${modPct}%"></div></div><div class="modPct">${modPct}%</div></div>
+    </div>`;
+  }).join('');
+
+  // Zone matrix (admin only) — still shows ALL zones/sections for oversight
   let matrixHTML='';
   if(isAdmin){
     const zSnap=await getDocs(collection(window.DB,'zones'));
     const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
     const allUQ=query(collection(window.DB,'uploads'),where('month','==',CURMONTH));
     const allU=(await getDocs(allUQ)).docs.map(d=>({id:d.id,...d.data()}));
-    const mod1done=getModKeys(1).map(k=>window.SECTIONS[k]);
-    const mod2done=getModKeys(2).map(k=>window.SECTIONS[k]);
+
+    const allSecsList = Object.values(window.SECTIONS||{}).sort((a,b)=>(a.mod-b.mod)||((a.order||0)-(b.order||0)));
 
     const zoneRows=zones.map(z=>{
       const zu=allU.filter(u=>u.zoneId===z.id);
-      const m1cells=getModKeys(1).map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
-      const m2cells=getModKeys(2).map(k=>{const n=zu.filter(u=>u.sectionId===k).length;return`<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;}).join('');
+      const zAllowedMods = z.allowedModules;
+      const zAllowedSecs = z.allowedSections;
+      const cells = allSecsList.map(s=>{
+        const isRunningHere = (!zAllowedMods || zAllowedMods.includes(s.mod)) && (!zAllowedSecs || zAllowedSecs.includes(s.id));
+        if(!isRunningHere) return `<td style="text-align:center;color:var(--gray3)">—</td>`;
+        const n=zu.filter(u=>u.sectionId===s.id).length;
+        return `<td class="${n?'cellOk':'cellMiss'}">${n?'✓':'✗'}</td>`;
+      }).join('');
       const total=zu.length;
-      return`<tr><td><b>${esc(z.name)}</b></td>${m1cells}${m2cells}<td><b>${total}</b></td></tr>`;
+      return`<tr><td><b>${esc(z.name)}</b></td>${cells}<td><b>${total}</b></td></tr>`;
     }).join('');
 
     matrixHTML=`<div class="card mt16">
@@ -644,10 +706,10 @@ async function renderDash(){
         <span class="pill ${pct>=80?'pg':pct>=50?'pa':'pr'}">${pct}% covered</span>
       </div>
       <div class="matrixWrap"><table class="matrix">
-        <thead><tr><th>Zone</th>${getModKeys(1).map(k=>`<th title="${window.SECTIONS[k].label}">${window.SECTIONS[k].icon}</th>`).join('')}${getModKeys(2).map(k=>`<th title="${window.SECTIONS[k].label}">${window.SECTIONS[k].icon}</th>`).join('')}<th>Files</th></tr></thead>
+        <thead><tr><th>Zone</th>${allSecsList.map(s=>`<th title="${esc(s.label)}">${s.icon}</th>`).join('')}<th>Files</th></tr></thead>
         <tbody>${zoneRows}</tbody>
       </table></div>
-      <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = at least 1 file uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; Hover icons to see section name</div>
+      <div style="margin-top:8px;font-size:11px;color:var(--gray3);">✓ = uploaded &nbsp;|&nbsp; ✗ = no upload &nbsp;|&nbsp; — = module/section not assigned to this zone</div>
     </div>`;
   }
 
@@ -657,28 +719,10 @@ async function renderDash(){
 
   <div class="statsGrid">
     <div class="statBox"><div class="stLbl">Files This Month</div><div class="stNum">${uploads.length}</div><div class="stSub">uploaded</div></div>
-    <div class="statBox"><div class="stLbl">Sections Covered</div><div class="stNum">${coveredSections}/${totalSections}</div><div class="stSub">of ${totalSections} required</div></div>
-    <div class="statBox"><div class="stLbl">Module 1</div><div class="stNum" style="color:var(--green)">${m1cov}/${getModKeys(1).length}</div><div class="stSub">5S & Workplace</div></div>
-    <div class="statBox"><div class="stLbl">Module 2</div><div class="stNum" style="color:var(--purple)">${m2cov}/${getModKeys(2).length}</div><div class="stSub">Operations</div></div>
+    <div class="statBox"><div class="stLbl">Sections Covered</div><div class="stNum">${coveredSections}/${totalSections}</div><div class="stSub">of ${totalSections} assigned</div></div>
   </div>
 
-  <div class="modCard modCard1" onclick="goto('m1_5s')">
-    <div class="modCardTop">
-      <div class="modCardTitle">🏭 Module 1 — 5S & Workplace</div>
-      <span class="pill pg">${m1cov}/${getModKeys(1).length} sections</span>
-    </div>
-    <div class="modCardSubs">5S Reports · Visual Management · Gemba Huddle</div>
-    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--green),var(--green-m));width:${Math.round(m1cov/getModKeys(1).length*100)}%"></div></div><div class="modPct">${Math.round(m1cov/getModKeys(1).length*100)}%</div></div>
-  </div>
-
-  <div class="modCard modCard2" onclick="goto('m2_oee')">
-    <div class="modCardTop">
-      <div class="modCardTitle">📊 Module 2 — Operations Excellence</div>
-      <span class="pill pp">${m2cov}/${getModKeys(2).length} sections</span>
-    </div>
-    <div class="modCardSubs">OEE · Skill Matrix · KANBAN · PFMEA · Constraint · MSA · SPC · TPM AM · LPA · Quality Alerts · Kaizen · Projects</div>
-    <div class="modProgress"><div class="progWrap" style="flex:1"><div class="progBar" style="background:linear-gradient(90deg,var(--purple),#818cf8);width:${Math.round(m2cov/getModKeys(2).length*100)}%"></div></div><div class="modPct">${Math.round(m2cov/getModKeys(2).length*100)}%</div></div>
-  </div>
+  ${modCardsHTML || '<div class="card"><div style="text-align:center;padding:24px;color:var(--gray3);">No modules assigned to your zone yet. Contact your coordinator.</div></div>'}
   ${matrixHTML}`;
 }
 
@@ -1320,23 +1364,157 @@ async function renderUsers(){
 async function renderZones(){
   const mc=$('mc');
   const {collection,getDocs}=window.FS;
-  const zSnap=await getDocs(collection(window.DB,'zones'));
+  const [zSnap,modSnap]=await Promise.all([
+    getDocs(collection(window.DB,'zones')),
+    getDocs(collection(window.DB,'modules'))
+  ]);
   const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+  const mods=modSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+
+  function moduleSummary(z){
+    // If allowedModules is undefined → treat as "all modules" (backward compatible)
+    if(!z.allowedModules) return '<span class="pill pg">All Modules</span>';
+    if(z.allowedModules.length===0) return '<span class="pill pr">No Modules</span>';
+    return z.allowedModules.map(mNum=>{
+      const m=mods.find(mm=>mm.order===mNum||mm.id==='mod'+mNum);
+      return `<span class="pill pb" style="margin-right:3px">${m?esc(m.name):'Module '+mNum}</span>`;
+    }).join('');
+  }
 
   mc.innerHTML=`
   <div class="pgTitle">⚙️ Settings — Zones</div>
-  <div class="pgSub">Manage zones. Each zone corresponds to a plant area.</div>
+  <div class="pgSub">Manage zones and control which modules/sections each zone can see and upload to.</div>
   <div class="card">
     <div class="cardHd">Zones <button class="btn btnP btnSm" onclick="showZoneModal(null)">+ Add Zone</button></div>
     <div class="tblWrap"><table class="tbl">
-      <thead><tr><th>Zone Name</th><th>Description</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Zone Name</th><th>Description</th><th>Modules Assigned</th><th>Actions</th></tr></thead>
       <tbody>${zones.map(z=>`<tr>
-        <td><b>${esc(z.name)}</b></td><td>${esc(z.desc||'')}</td>
-        <td><button class="btn btnO btnSm" onclick='showZoneModal(${JSON.stringify({id:z.id,...z})})'>Edit</button> <button class="btn btnD btnSm" onclick="delZone('${z.id}')">Del</button></td>
+        <td><b>${esc(z.name)}</b></td>
+        <td>${esc(z.desc||'')}</td>
+        <td>${moduleSummary(z)}</td>
+        <td>
+          <button class="btn btnO btnSm" onclick='showZoneModal(${JSON.stringify({id:z.id,...z}).replace(/"/g,"&quot;")})'>Edit</button>
+          <button class="btn btnP btnSm" onclick="showZoneSectionsModal('${z.id}')">🧩 Sections</button>
+          <button class="btn btnD btnSm" onclick="delZone('${z.id}')">Del</button>
+        </td>
       </tr>`).join('')}</tbody>
     </table></div>
   </div>`;
 }
+
+function showZoneModal(z){
+  (async()=>{
+    const {collection,getDocs}=window.FS;
+    const modSnap=await getDocs(collection(window.DB,'modules'));
+    const mods=modSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+    const allowedModules = z?.allowedModules; // undefined = all
+    const isAllSelected = !allowedModules;
+
+    modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+      <div class="mBox">
+        <div class="mHead"><h3>${z?'Edit Zone':'Add Zone'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+        <div class="mBody">
+          <div class="f2"><label>Zone Name</label><input id="zN" value="${esc(z?.name||'')}" placeholder="e.g. Zone 3"></div>
+          <div class="f2"><label>Description</label><input id="zD" value="${esc(z?.desc||'')}" placeholder="e.g. Dewax & Casting"></div>
+          <div class="f2">
+            <label>Modules Running in This Zone</label>
+            <div style="font-size:11px;color:var(--gray3);margin-bottom:8px;">Uncheck a module to hide it entirely for this zone's leader. You can fine-tune individual sections after saving via the 🧩 Sections button.</div>
+            ${mods.map(m=>`
+              <div style="display:flex;align-items:center;gap:8px;padding:6px 0;">
+                <input type="checkbox" id="zMod_${m.order}" ${isAllSelected || (allowedModules&&allowedModules.includes(m.order)) ? 'checked':''} style="width:16px;height:16px;">
+                <label for="zMod_${m.order}" style="font-size:13px;font-weight:500;margin:0;text-transform:none;letter-spacing:0;">${esc(m.name)}</label>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveZone('${z?.id||''}')">Save</button></div>
+      </div>
+    </div>`);
+    window._zoneModalMods = mods;
+  })();
+}
+
+async function saveZone(editId){
+  const name=$('zN').value.trim();
+  const desc=$('zD').value.trim();
+  if(!name){toast('Enter zone name.');return;}
+
+  const mods = window._zoneModalMods||[];
+  const allowedModules = mods.filter(m=>document.getElementById('zMod_'+m.order)?.checked).map(m=>m.order);
+
+  const {collection,doc,setDoc,addDoc}=window.FS;
+  const data = {name, desc, allowedModules};
+
+  if(editId){
+    await setDoc(doc(window.DB,'zones',editId),data,{merge:true});
+  } else {
+    await addDoc(collection(window.DB,'zones'),data);
+  }
+  closeModal();toast('✅ Zone saved.');renderZones();
+}
+
+async function delZone(id){
+  if(!confirm('Delete this zone?'))return;
+  const {doc,deleteDoc}=window.FS;
+  await deleteDoc(doc(window.DB,'zones',id));
+  toast('Deleted.');renderZones();
+}
+
+// ════════════════════════════════════════════════════
+// FINE-TUNE: per-zone section checkboxes (within allowed modules)
+// ════════════════════════════════════════════════════
+async function showZoneSectionsModal(zoneId){
+  const {collection,getDocs,doc,getDoc}=window.FS;
+  const [zDoc,modSnap]=await Promise.all([
+    getDoc(doc(window.DB,'zones',zoneId)),
+    getDocs(collection(window.DB,'modules'))
+  ]);
+  const z = {id:zDoc.id, ...zDoc.data()};
+  const mods = modSnap.docs.map(d=>({id:d.id,...d.data()})).sort((a,b)=>(a.order||0)-(b.order||0));
+  const allowedModules = z.allowedModules; // undefined = all modules
+  const allowedSections = z.allowedSections; // undefined = all sections within allowed modules
+
+  const secs = Object.values(window.SECTIONS||{});
+  const visibleMods = allowedModules ? mods.filter(m=>allowedModules.includes(m.order)) : mods;
+
+  const body = visibleMods.map(m=>{
+    const modSecs = secs.filter(s=>s.mod===m.order).sort((a,b)=>(a.order||0)-(b.order||0));
+    return `<div style="margin-bottom:14px;">
+      <div style="font-size:12px;font-weight:700;color:var(--navy);margin-bottom:6px;">${esc(m.name)}</div>
+      ${modSecs.map(s=>{
+        const checked = !allowedSections || allowedSections.includes(s.id);
+        return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0 5px 12px;">
+          <input type="checkbox" class="zoneSecChk" data-sid="${s.id}" ${checked?'checked':''} style="width:15px;height:15px;">
+          <label style="font-size:12px;margin:0;text-transform:none;letter-spacing:0;font-weight:400;">${s.icon||'📄'} ${esc(s.label)}</label>
+        </div>`;
+      }).join('') || '<div style="font-size:11px;color:var(--gray3);padding-left:12px;">No sections in this module.</div>'}
+    </div>`;
+  }).join('');
+
+  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
+    <div class="mBox" style="max-width:520px">
+      <div class="mHead"><h3>🧩 Sections — ${esc(z.name)}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
+      <div class="mBody">
+        <div style="font-size:12px;color:var(--gray3);margin-bottom:12px;">Uncheck any section to hide it from this zone's leader, even within an allowed module. Check all to show everything in the module.</div>
+        ${body || '<div style="text-align:center;color:var(--gray3);padding:20px;">No modules assigned to this zone yet. Edit the zone first to enable a module.</div>'}
+      </div>
+      <div class="mFoot">
+        <button class="btn btnO" onclick="closeModal()">Cancel</button>
+        <button class="btn btnP" onclick="saveZoneSections('${zoneId}')">Save</button>
+      </div>
+    </div>
+  </div>`);
+}
+
+async function saveZoneSections(zoneId){
+  const checks = document.querySelectorAll('.zoneSecChk');
+  const allowedSections = Array.from(checks).filter(c=>c.checked).map(c=>c.dataset.sid);
+  const {doc,setDoc}=window.FS;
+  await setDoc(doc(window.DB,'zones',zoneId),{allowedSections},{merge:true});
+  closeModal();toast('✅ Section visibility saved for this zone.');renderZones();
+}
+
+
 
 function showUserModal(u){
   const zones=[];
@@ -1409,35 +1587,6 @@ async function delUser(id){
   toast('Deleted.');renderUsers();
 }
 
-function showZoneModal(z){
-  modal(`<div class="mOvr ctr" id="mOvr" onclick="if(event.target.id==='mOvr')closeModal()">
-    <div class="mBox">
-      <div class="mHead"><h3>${z?'Edit Zone':'Add Zone'}</h3><button class="btnIc" onclick="closeModal()">✕</button></div>
-      <div class="mBody">
-        <div class="f2"><label>Zone Name</label><input id="zN" value="${esc(z?.name||'')}" placeholder="e.g. Zone 3"></div>
-        <div class="f2"><label>Description</label><input id="zD" value="${esc(z?.desc||'')}" placeholder="e.g. Dewax & Casting"></div>
-      </div>
-      <div class="mFoot"><button class="btn btnO" onclick="closeModal()">Cancel</button><button class="btn btnP" onclick="saveZone('${z?.id||''}')">Save</button></div>
-    </div>
-  </div>`);
-}
-
-async function saveZone(editId){
-  const name=$('zN').value.trim();
-  const desc=$('zD').value.trim();
-  if(!name){toast('Enter zone name.');return;}
-  const {collection,doc,setDoc}=window.FS;
-  if(editId) await setDoc(doc(window.DB,'zones',editId),{name,desc},{merge:true});
-  else await setDoc(doc(collection(window.DB,'zones')),{name,desc});
-  closeModal();toast('✅ Zone saved.');renderSettings();
-}
-
-async function delZone(id){
-  if(!confirm('Delete zone?'))return;
-  const {doc,deleteDoc}=window.FS;
-  await deleteDoc(doc(window.DB,'zones',id));
-  toast('Deleted.');renderSettings();
-}
 
 function summaryCardHTML(s){
   const date=s.createdAt?.toDate?.()?.toLocaleDateString()||s.createdAtStr||'';
@@ -1588,10 +1737,17 @@ function buildSidebar(){
   const secs = window.SECTIONS||{};
   const mods = window.MODULES||{};
 
-  // Group sections by module number
+  // Apply zone-based filtering for leaders only
+  const myZone = (CU && CU.role==='leader') ? window.MY_ZONE : null;
+  const allowedModules = myZone ? myZone.allowedModules : null; // null = no restriction
+  const allowedSections = myZone ? myZone.allowedSections : null; // null = no restriction
+
+  // Group sections by module number — filtered for this zone's permissions
   const byMod = {};
   Object.values(secs).forEach(s=>{
     const m = s.mod||1;
+    if(allowedModules && !allowedModules.includes(m)) return; // module hidden for this zone
+    if(allowedSections && !allowedSections.includes(s.id)) return; // section hidden for this zone
     if(!byMod[m]) byMod[m]=[];
     byMod[m].push(s);
   });
