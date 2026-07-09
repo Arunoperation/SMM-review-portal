@@ -498,6 +498,14 @@ async function login(){
     }
     // Admin items shown via buildSidebar() which checks CU.role
     buildBnav();
+    // Pre-load zones for admin upload zone picker
+    (async()=>{
+      try{
+        const {collection,getDocs}=window.FS;
+        const zSnap=await getDocs(collection(window.DB,'zones'));
+        window._allZones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
+      }catch(e){}
+    })();
     goto('dash');
     const lb=document.getElementById('logoutBtn');
     const cp=document.getElementById('chgPwBtn');
@@ -903,7 +911,15 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
 
   const uploadBlock = CU.role!=='consultant' ? `
   <div class="card">
-    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:CU.role==='dept_leader'?`<span class="pill pp">${esc(CU.deptName||CU.deptId)}</span>`:''}</div>
+    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:CU.role==='dept_leader'?`<span class="pill pp">${esc(CU.deptName||CU.deptId)}</span>`:`<span class="pill pg">Admin Upload</span>`}</div>
+    ${(CU.role==='admin'||CU.role==='coordinator')?`
+    <div class="f2"><label>Upload on behalf of Zone (optional)</label>
+      <select id="adminZoneSel-\${folderKey}">
+        <option value="">— General / Admin —</option>
+        \${(window._allZones||[]).map(z=>\`<option value="\${z.id}" data-name="\${z.name}">\${z.name}</option>\`).join('')}
+      </select>
+    </div>`:''}
+
     <div class="f2"><label>Month</label>
       <select id="upMon-${folderKey}">
         ${MONTHS.map((m)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
@@ -1020,9 +1036,18 @@ async function doUploadItem(skey, itemIdx, folderKey){
     });
     try{
       const {collection,addDoc,serverTimestamp}=window.FS;
+      // Admin can upload on behalf of a zone
+      let uploadZoneId=CU.zoneId||'', uploadZoneName=CU.zoneName||'';
+      if(CU.role==='admin'||CU.role==='coordinator'){
+        const zoneSel=document.getElementById('adminZoneSel-'+folderKey);
+        if(zoneSel&&zoneSel.value){
+          uploadZoneId=zoneSel.value;
+          uploadZoneName=zoneSel.options[zoneSel.selectedIndex]?.dataset?.name||zoneSel.value;
+        }
+      }
       await addDoc(collection(window.DB,'uploads'),{
         sectionId:skey, name:pf.name, size:pf.size, month, checkItem, note,
-        zoneId:CU.zoneId||'', zoneName:CU.zoneName||'',
+        zoneId:uploadZoneId, zoneName:uploadZoneName,
         deptId:CU.deptId||'', deptName:CU.deptName||'',
         uploadedById:CU.id, uploadedBy:CU.name,
         fileData:b64,
@@ -1049,7 +1074,7 @@ function fRowHTML(u){
     </div>
     <div class="frActs">
       <button class="btn btnP btnSm" style="font-size:12px;padding:4px 10px" onclick="downloadFile('${u.id}','${esc(u.name)}')">⬇️ Download</button>
-      ${CU.role==='admin'||CU.role==='coordinator'||u.uploadedById===CU.id?`<button class="btnIc" title="Delete" onclick="delFile('${u.id}')">🗑️</button>`:''}
+      ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btnIc" title="Delete" onclick="delFile('${u.id}')">🗑️</button>`:''}
     </div>
   </div>`;
 }
@@ -1294,8 +1319,8 @@ async function renderAllFiles(){
           </div>
         </div>
         <div class="frActions">
-          <a href="${esc(u.downloadUrl)}" target="_blank"><button class="btnIc">⬇️</button></a>
-          ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btnIc" onclick="delUpload('${u.id}','${esc(u.storagePath)}')">🗑️</button>`:''}
+          <button class="btn btnP btnSm" style="font-size:12px;padding:4px 10px" onclick="downloadFile('${u.id}','${esc(u.name)}')">⬇️ Download</button>
+          ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btnIc" onclick="delFile('${u.id}')">🗑️</button>`:''}
         </div>
       </div>`;
     }).join(''):`<div style="text-align:center;padding:32px;color:var(--gray3);">No files match the selected filters.</div>`}
@@ -2289,14 +2314,23 @@ try {
 
 async function downloadFile(uploadId, filename){
   try{
+    toast('⏳ Preparing download...');
     const {doc,getDoc}=window.FS;
     const snap=await getDoc(doc(window.DB,'uploads',uploadId));
     if(!snap.exists()){toast('File not found.');return;}
     const b64=snap.data().fileData;
     if(!b64){toast('No file data stored.');return;}
+    // Convert base64 data URL to blob to avoid page navigation
+    const res=await fetch(b64);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
-    a.href=b64; a.download=filename;
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    a.href=url; a.download=filename;
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
+    toast('✅ Download started!');
   }catch(e){toast('Download error: '+e.message);}
 }
 </script>
