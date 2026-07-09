@@ -758,10 +758,10 @@ async function renderSectionItemList(skey, sec, modBand, isAdmin){
         <span class="frIco" style="font-size:20px">${hasFiles?'📂':'📁'}</span>
         <div class="frInfo">
           <div class="frName" style="white-space:normal">${idx+1}. ${esc(item)}</div>
-          <div class="frMeta">${hasFiles?`${fileCount} file(s) uploaded`:'No files yet'}${isAdmin&&hasFiles?` · ${zoneCount} zone(s)`:''}</div>
+          <div class="frMeta">${hasFiles?`${fileCount} file(s) uploaded${isAdmin&&hasFiles?' · '+zoneCount+' zone(s)':''} — <b>click to view & download</b>`:'No files yet — click to upload'}</div>
         </div>
         <div class="frActs">
-          ${hasFiles?'<span class="pill pg">✓ Has files</span>':'<span class="pill px">Empty</span>'}
+          ${hasFiles?'<span class="pill pg">✓ Click to open →</span>':'<span class="pill px">Click to upload →</span>'}
           ${isAdmin?`<button class="btnIc" title="Edit requirement text" onclick="event.stopPropagation();editChecklistItem('${skey}',${idx})">✏️</button>
           <button class="btnIc" title="Delete requirement" onclick="event.stopPropagation();deleteChecklistItem('${skey}',${idx})">🗑️</button>`:''}
         </div>
@@ -772,9 +772,9 @@ async function renderSectionItemList(skey, sec, modBand, isAdmin){
       <span class="frIco" style="font-size:20px">📦</span>
       <div class="frInfo">
         <div class="frName">General Uploads (not tied to a specific requirement)</div>
-        <div class="frMeta">${generalCount?generalCount+' file(s) uploaded':'No general files yet'}</div>
+        <div class="frMeta">${generalCount?generalCount+' file(s) uploaded — <b>click to view & download</b>':'No general files yet'}</div>
       </div>
-      <div class="frActs">${generalCount?'<span class="pill pg">✓ Has files</span>':'<span class="pill px">Empty</span>'}</div>
+      <div class="frActs">${generalCount?'<span class="pill pg">✓ Click to open →</span>':'<span class="pill px">Empty</span>'}</div>
     </div>
   </div>`;
 }
@@ -1048,7 +1048,7 @@ function fRowHTML(u){
       </div>
     </div>
     <div class="frActs">
-      <button class="btnIc" title="Download" onclick="downloadFile('${u.id}','${esc(u.name)}')">⬇️</button>
+      <button class="btn btnP btnSm" style="font-size:12px;padding:4px 10px" onclick="downloadFile('${u.id}','${esc(u.name)}')">⬇️ Download</button>
       ${CU.role==='admin'||CU.role==='coordinator'||u.uploadedById===CU.id?`<button class="btnIc" title="Delete" onclick="delFile('${u.id}')">🗑️</button>`:''}
     </div>
   </div>`;
