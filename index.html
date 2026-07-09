@@ -1285,7 +1285,7 @@ async function renderAllFiles(){
       const f=Object.values(window.SECTIONS||{}).find(x=>x.id===(u.sectionId||u.folderId));
       const z=zones.find(x=>x.id===u.zoneId);
       return `<div class="fileRow">
-        <span class="frIcon">${fileIcon(u.name)}</span>
+        <span class="frIcon">${fIcon(u.name)}</span>
         <div class="frInfo">
           <div class="frName">${esc(u.name)}</div>
           <div class="frMeta">
