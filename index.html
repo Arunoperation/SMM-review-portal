@@ -2287,6 +2287,29 @@ setTimeout(function(){
 },15000);
 
 </script>
+<script>
+async function downloadFile(uploadId, filename){
+  try{
+    toast('⏳ Preparing download...');
+    const {doc,getDoc}=window.FS;
+    const snap=await getDoc(doc(window.DB,'uploads',uploadId));
+    if(!snap.exists()){toast('File not found.');return;}
+    const b64=snap.data().fileData;
+    if(!b64){toast('No file data stored.');return;}
+    // Convert base64 data URL to blob to avoid page navigation
+    const res=await fetch(b64);
+    const blob=await res.blob();
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url; a.download=filename;
+    a.style.display='none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
+    toast('✅ Download started!');
+  }catch(e){toast('Download error: '+e.message);}
+}
+</script>
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
@@ -2310,28 +2333,6 @@ try {
   console.error('Firebase error:', e);
   document.getElementById('loadScr').style.display='none';
   document.getElementById('loginScr').style.display='flex';
-}
-
-async function downloadFile(uploadId, filename){
-  try{
-    toast('⏳ Preparing download...');
-    const {doc,getDoc}=window.FS;
-    const snap=await getDoc(doc(window.DB,'uploads',uploadId));
-    if(!snap.exists()){toast('File not found.');return;}
-    const b64=snap.data().fileData;
-    if(!b64){toast('No file data stored.');return;}
-    // Convert base64 data URL to blob to avoid page navigation
-    const res=await fetch(b64);
-    const blob=await res.blob();
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url; a.download=filename;
-    a.style.display='none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
-    toast('✅ Download started!');
-  }catch(e){toast('Download error: '+e.message);}
 }
 </script>
 </body>
