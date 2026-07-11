@@ -902,29 +902,57 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
 
   const uploadBlock = (CU.role==='coordinator'||CU.role==='admin') ? `
   <div class="card">
-    <div class="cardHd">📤 Upload</div>
-
+    <div class="cardHd">📤 Add File or Link</div>
     <div class="f2"><label>Month</label>
       <select id="upMon-${folderKey}">
-        ${MONTHS.map((m)=>{const v=`${m}-${String(NOW.getFullYear()).slice(-2)}`;return`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>`;}).join('')}
+        ${MONTHS.map((m)=>{const v=\`${m}-${String(NOW.getFullYear()).slice(-2)}\`;return\`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>\`;}).join('')}
       </select>
     </div>
     <div class="f2"><label>Note / Observation (optional)</label>
       <textarea id="upNote-${folderKey}" rows="2" placeholder="Add context, reference, status note..."></textarea>
     </div>
-    <div class="uploadZone" id="uz-${folderKey}" onclick="$('ufi-${folderKey}').click()"
-      ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')"
-      ondrop="dropFilesItem(event,'${folderKey}')">
-      <div class="uzIco">📎</div>
-      <p><b>Tap to select files</b> or drag & drop</p>
-      <small>PDF, Excel, Word, Images — any format</small>
+    <div style="display:flex;gap:0;border:1px solid var(--gray2);border-radius:8px;overflow:hidden;margin-bottom:14px;">
+      <button id="tabFile-${folderKey}" onclick="switchUploadTab('file','${folderKey}')"
+        style="flex:1;padding:9px;border:none;background:var(--blue);color:#fff;font-size:12px;font-weight:600;cursor:pointer;">
+        Upload File <small style="opacity:.8">(max 1MB)</small>
+      </button>
+      <button id="tabLink-${folderKey}" onclick="switchUploadTab('link','${folderKey}')"
+        style="flex:1;padding:9px;border:none;background:var(--gray1);color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;">
+        Add Drive / OneDrive Link <small style="opacity:.8">(unlimited size)</small>
+      </button>
     </div>
-    <input type="file" id="ufi-${folderKey}" multiple style="display:none" onchange="selFilesItem(this,'${folderKey}')">
-    <div id="pList-${folderKey}"></div>
-    <div class="btnRow">
-      <button class="btn btnP" id="upBtn-${folderKey}" onclick="doUploadItem('${skey}','${itemIdx}','${folderKey}')">📤 Upload</button>
+    <div id="panelFile-${folderKey}">
+      <div class="uploadZone" id="uz-${folderKey}" onclick="$('ufi-${folderKey}').click()"
+        ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')"
+        ondrop="dropFilesItem(event,'${folderKey}')">
+        <div class="uzIco">📎</div>
+        <p><b>Tap to select files</b> or drag & drop</p>
+        <small>PDF, Excel, Word, Images — max 1MB per file</small>
+      </div>
+      <input type="file" id="ufi-${folderKey}" multiple style="display:none" onchange="selFilesItem(this,'${folderKey}')">
+      <div id="pList-${folderKey}"></div>
+      <div class="btnRow">
+        <button class="btn btnP" id="upBtn-${folderKey}" onclick="doUploadItem('${skey}','${itemIdx}','${folderKey}')">Upload File</button>
+      </div>
+      <div id="upProg-${folderKey}"></div>
     </div>
-    <div id="upProg-${folderKey}"></div>
+    <div id="panelLink-${folderKey}" style="display:none">
+      <div style="background:var(--blue-l);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--blue);margin-bottom:12px;">
+        <b>How to get a shareable link:</b><br>
+        Google Drive: Right-click file &rarr; Share &rarr; Copy link (set Anyone with link)<br>
+        OneDrive: Right-click &rarr; Share &rarr; Copy link (set Anyone)
+      </div>
+      <div class="f2"><label>File Name (as it should appear in portal)</label>
+        <input id="linkName-${folderKey}" placeholder="e.g. OEE_June26.xlsx">
+      </div>
+      <div class="f2"><label>Paste Shareable Link</label>
+        <input id="linkUrl-${folderKey}" placeholder="https://drive.google.com/... or https://1drv.ms/...">
+      </div>
+      <div class="btnRow">
+        <button class="btn btnP" onclick="doAddLink('${skey}','${itemIdx}','${folderKey}')">Save Link</button>
+      </div>
+    </div>
+  </div>`:'';
   </div>`:'';
 
   const filesBlock = isAdmin ? `
@@ -985,7 +1013,7 @@ async function doUploadItem(skey, itemIdx, folderKey){
   let uploaded=0;
   for(const pf of files){
     if(pf.size > MAX_B64){
-      toast(`⚠️ "${pf.name}" is ${bytes(pf.size)} — too large. Max 900KB.`,5000);
+      toast(`"${pf.name}" is ${bytes(pf.size)} — too large for direct upload. Use the Drive/OneDrive link option instead.`,5000);
       continue;
     }
     prog.innerHTML=`<div style="margin-top:8px;background:var(--gray0);border-radius:6px;padding:9px 12px;font-size:12px;">
@@ -1023,21 +1051,24 @@ async function doUploadItem(skey, itemIdx, folderKey){
 
 
 function fRowHTML(u){
-  // Store id and name in data attributes to avoid quote escaping issues in onclick
   const safeId = u.id||'';
   const safeName = (u.name||'').replace(/"/g,'&quot;');
+  const sizeLabel = u.isLink ? '🔗 Shared Link' : bytes(u.size);
+  const actionBtn = u.isLink && u.linkUrl
+    ? `<a href="${u.linkUrl}" target="_blank" rel="noopener" class="btn btnP btnSm" style="font-size:12px;padding:4px 10px;text-decoration:none;">Open Link</a>`
+    : `<button class="btn btnP btnSm" style="font-size:12px;padding:4px 10px"
+        data-fid="${safeId}" data-fname="${safeName}"
+        onclick="downloadFile(this.dataset.fid,this.dataset.fname)">Download</button>`;
   return`<div class="fileRow">
-    <span class="frIco">${fIcon(u.name)}</span>
+    <span class="frIco">${u.isLink?'🔗':fIcon(u.name)}</span>
     <div class="frInfo">
       <div class="frName">${esc(u.name)}</div>
-      <div class="frMeta">${bytes(u.size)} · ${u.month} · ${esc(u.uploadedBy)} · ${u.uploadedAt?.toDate?.()?.toLocaleDateString()||u.uploadedAtStr||''}
+      <div class="frMeta">${sizeLabel} · ${u.month} · ${esc(u.uploadedBy)} · ${u.uploadedAt?.toDate?.()?.toLocaleDateString()||u.uploadedAtStr||''}
         ${u.note?`<br><span style="color:var(--gray4)">📝 ${esc(u.note)}</span>`:''}
       </div>
     </div>
     <div class="frActs">
-      <button class="btn btnP btnSm" style="font-size:12px;padding:4px 10px"
-        data-fid="${safeId}" data-fname="${safeName}"
-        onclick="downloadFile(this.dataset.fid,this.dataset.fname)">Download</button>
+      ${actionBtn}
       ${CU.role==='admin'||CU.role==='coordinator'?`<button class="btnIc" title="Delete"
         data-fid="${safeId}" onclick="delFile(this.dataset.fid)">🗑️</button>`:''}
     </div>
@@ -2207,6 +2238,52 @@ async function delSection(id){
 }
 
 // ════════════════════════════════════════════════════
+
+// ════════ UPLOAD TAB SWITCHER ════════
+function switchUploadTab(tab, folderKey){
+  const filePanel = document.getElementById('panelFile-'+folderKey);
+  const linkPanel = document.getElementById('panelLink-'+folderKey);
+  const fileBtn   = document.getElementById('tabFile-'+folderKey);
+  const linkBtn   = document.getElementById('tabLink-'+folderKey);
+  if(!filePanel||!linkPanel) return;
+  if(tab==='file'){
+    filePanel.style.display=''; linkPanel.style.display='none';
+    fileBtn.style.background='var(--blue)'; fileBtn.style.color='#fff';
+    linkBtn.style.background='var(--gray1)'; linkBtn.style.color='var(--navy)';
+  } else {
+    filePanel.style.display='none'; linkPanel.style.display='';
+    linkBtn.style.background='var(--blue)'; linkBtn.style.color='#fff';
+    fileBtn.style.background='var(--gray1)'; fileBtn.style.color='var(--navy)';
+  }
+}
+
+// ════════ SAVE DRIVE / ONEDRIVE LINK ════════
+async function doAddLink(skey, itemIdx, folderKey){
+  const nameEl = document.getElementById('linkName-'+folderKey);
+  const urlEl  = document.getElementById('linkUrl-'+folderKey);
+  const monEl  = document.getElementById('upMon-'+folderKey);
+  const noteEl = document.getElementById('upNote-'+folderKey);
+  const name   = nameEl ? nameEl.value.trim() : '';
+  const url    = urlEl  ? urlEl.value.trim()  : '';
+  const month  = monEl  ? monEl.value : CURMONTH;
+  const note   = noteEl ? noteEl.value.trim() : '';
+  if(!name){ toast('Enter a file name.'); return; }
+  if(!url || !url.startsWith('http')){ toast('Enter a valid shareable link (must start with http).'); return; }
+  const checkItem = itemIdx==='general' ? '' : String(itemIdx);
+  const {collection,addDoc,serverTimestamp}=window.FS;
+  await addDoc(collection(window.DB,'uploads'),{
+    sectionId:skey, name, size:0, month, checkItem, note,
+    zoneId:'', zoneName:'', deptId:'', deptName:'',
+    uploadedById:CU.id, uploadedBy:CU.name,
+    fileData:'', linkUrl:url, isLink:true,
+    uploadedAt:serverTimestamp(), uploadedAtStr:new Date().toLocaleDateString()
+  });
+  toast('Link saved: '+name);
+  const _itemIdx = folderKey.replace(skey+'__','');
+  window['_item_'+skey] = isNaN(_itemIdx) ? _itemIdx : parseInt(_itemIdx);
+  renderSection(skey);
+}
+
 // APP INIT — called by Firebase module after DB is ready
 // Defined here (after login/toast/$ etc.) so all references work
 // ════════════════════════════════════════════════════
