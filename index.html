@@ -478,7 +478,7 @@ async function login(){
     CU={id:d.id,...ud};
     $('loginScr').style.display='none';
     $('appScr').style.display='flex';
-    $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader',dept_leader:'Dept Leader'}[CU.role]||CU.role;
+    $('topRole').textContent={admin:'Admin',coordinator:'Admin',consultant:'Consultant',leader:'Leader',dept_leader:'Leader'}[CU.role]||CU.role;
     $('topUser').textContent=CU.name;
     // Load this leader's zone permissions (module/section visibility)
     if(CU.role==='leader' && CU.zoneId){
@@ -552,7 +552,7 @@ function render(){
 async function renderDash(){
   const mc=$('mc');
   const {collection,query,where,getDocs}=window.FS;
-  const isAdmin = CU.role!=='leader' && CU.role!=='dept_leader';
+  const isAdmin = CU.role==='coordinator' || CU.role==='admin'; // only coordinator has admin view
   const isLeaderType = CU.role==='leader' || CU.role==='dept_leader';
 
   // Determine which sections THIS user is allowed to see (zone- or dept-filtered)
@@ -667,7 +667,7 @@ async function renderDash(){
 
   mc.innerHTML=`
   <div class="pgTitle">👋 ${esc(CU.name)}</div>
-  <div class="pgSub">${CU.role==='leader'?(CU.zoneName||CU.zoneId):CU.role==='dept_leader'?(CU.deptName||CU.deptId)+' (Department)':'All Zones & Departments'} · ${CURMONTH}</div>
+  <div class="pgSub">${CU.role==='leader'?(CU.zoneName||CU.zoneId):'All Sections'} · ${CURMONTH}</div>
 
   <div class="statsGrid">
     <div class="statBox"><div class="stLbl">Files This Month</div><div class="stNum">${uploads.length}</div><div class="stSub">uploaded</div></div>
@@ -693,7 +693,7 @@ async function renderSection(skey){
   }
   if(!sec){mc.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray3)">Section not found.</div>';return;}
 
-  const isAdmin=CU.role!=='leader' && CU.role!=='dept_leader';
+  const isAdmin=CU.role==='coordinator'||CU.role==='admin'; // only coordinator gets admin file view
   const modObj=Object.values(window.MODULES||{}).find(m=>m.order===sec.mod||m.id==='mod'+sec.mod);
   const modLabel=modObj?modObj.name:('Module '+sec.mod);
   const modBand=`<span class="modBand" style="background:var(--blue-l);color:var(--blue);display:inline-flex;align-items:center;gap:6px;padding:3px 12px;border-radius:20px;font-size:11px;font-weight:700;margin-bottom:18px">${modLabel}</span>`;
@@ -738,7 +738,7 @@ async function renderSectionItemList(skey, sec, modBand, isAdmin){
     return zids.size;
   }
 
-  const generalCount = relevantUploads.filter(u=>!u.checkItem && u.checkItem!=='0').length;
+  const generalCount = relevantUploads.filter(u=>u.checkItem===''||u.checkItem===null||u.checkItem===undefined).length;
 
   const addItemBtn = isAdmin ? `<button class="btn btnP btnSm" onclick="showAddChecklistItem('${skey}')">+ Add Requirement</button>` : '';
 
@@ -884,11 +884,17 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
 
   // Filter to this specific item
   uploads = isGeneral
-    ? uploads.filter(u=>!u.checkItem && u.checkItem!=='0')
+    ? uploads.filter(u=>u.checkItem===''||u.checkItem===null||u.checkItem===undefined)
     : uploads.filter(u=>String(u.checkItem)===String(itemIdx));
 
   const allMonths=[...new Set(uploads.map(u=>u.month))].sort().reverse();
-  const monthUps=uploads.filter(u=>u.month===selMonth);
+  // If selMonth has no files, fall back to most recent month with files
+  let effectiveMonth = selMonth;
+  if(uploads.length > 0 && !uploads.some(u=>u.month===selMonth)){
+    effectiveMonth = allMonths[0]; // most recent month that has files
+    window['_sm_'+skey+'_'+itemIdx] = effectiveMonth;
+  }
+  const monthUps=uploads.filter(u=>u.month===effectiveMonth);
 
   // No zone grouping needed — coordinator uploads, simple flat file list
 
@@ -1292,12 +1298,12 @@ async function renderUsers(){
   const zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
   const depts=dSnap.docs.map(d=>({id:d.id,...d.data()}));
 
-  const roleLabel = {coordinator:'Admin',admin:'Admin',consultant:'Consultant',leader:'Zone Leader',dept_leader:'Dept Leader'};
+  const roleLabel = {coordinator:'Admin',admin:'Admin',consultant:'Consultant',leader:'Zone Leader (Future)',dept_leader:'Dept Leader'};
   const rolePillClass = {coordinator:'pb',admin:'pb',consultant:'pa',leader:'pg',dept_leader:'pp'};
 
   mc.innerHTML=`
   <div class="pgTitle">👥 Manage Users</div>
-  <div class="pgSub">Add leaders for each zone or department. They will use these credentials to log in.</div>
+  <div class="pgSub">Manage users — Consultant (SMM) can view & download all files. Zone Leaders option available for future use.</div>
   <div class="card">
     <div class="cardHd">All Users <button class="btn btnP btnSm" onclick="showUserModal(null)">+ Add User</button></div>
     <div class="tblWrap"><table class="tbl">
@@ -1642,20 +1648,19 @@ function showUserModal(u){
           <div class="f2"><label>Password</label><input id="mP" type="text" value="${esc(u?.password||'')}" placeholder="Set a password"></div>
           <div class="f2"><label>Role</label>
             <select id="mR" onchange="toggleUserRoleFields()">
-              <option value="leader"${u?.role==='leader'?' selected':''}>Zone Leader</option>
-              <option value="dept_leader"${u?.role==='dept_leader'?' selected':''}>Department Leader</option>
+              <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant</option>
+              <option value="leader"${u?.role==='leader'?' selected':''}>Zone Leader (Future)</option>
               <option value="coordinator"${u?.role==='coordinator'?' selected':''}>Admin / Coordinator</option>
-              <option value="consultant"${u?.role==='consultant'?' selected':''}>Consultant (Read-only)</option>
             </select>
           </div>
-          <div class="f2" id="zoneFieldWrap" style="${u?.role==='dept_leader'?'display:none':''}">
+          <div class="f2" id="zoneFieldWrap" style="${u?.role==='leader'?'':'display:none'}">
             <label>Zone</label>
             <select id="mZ">
               <option value="">— All Zones (for Admin/Consultant) —</option>
               ${zones.map(z=>`<option value="${z.id}"${u?.zoneId===z.id?' selected':''}>${esc(z.name)} — ${esc(z.desc||'')}</option>`).join('')}
             </select>
           </div>
-          <div class="f2" id="deptFieldWrap" style="${u?.role!=='dept_leader'?'display:none':''}">
+          <div class="f2" id="deptFieldWrap" style="display:none">
             <label>Department</label>
             <select id="mDept">
               <option value="">— Select Department —</option>
@@ -1677,13 +1682,8 @@ function toggleUserRoleFields(){
   const role = $('mR').value;
   const zoneWrap = $('zoneFieldWrap');
   const deptWrap = $('deptFieldWrap');
-  if(role==='dept_leader'){
-    zoneWrap.style.display='none';
-    deptWrap.style.display='';
-  } else {
-    zoneWrap.style.display='';
-    deptWrap.style.display='none';
-  }
+  if(zoneWrap) zoneWrap.style.display = role==='leader' ? '' : 'none';
+  if(deptWrap) deptWrap.style.display = 'none';
 }
 
 async function saveUser(editId){
@@ -1872,8 +1872,8 @@ Be specific. Use zone names. Flag critical missing items clearly. Keep it profes
 // DYNAMIC SIDEBAR BUILDER
 // ════════════════════════════════════════════════════
 function buildSidebar(){
-  const isAdmin = CU && (CU.role==='admin'||CU.role==='coordinator');
-  const isCons  = CU && CU.role==='consultant';
+  const isAdmin = CU && (CU.role==='admin'||CU.role==='coordinator'); // Admin (Arun) only
+  const isCons  = CU && CU.role==='consultant'; // Consultant (SMM) — view/download all
   const secs = window.SECTIONS||{};
   const mods = window.MODULES||{};
 
