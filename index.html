@@ -905,7 +905,7 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
     <div class="cardHd">📤 Add File or Link</div>
     <div class="f2"><label>Month</label>
       <select id="upMon-${folderKey}">
-        ${MONTHS.map((m)=>{const v=\`${m}-${String(NOW.getFullYear()).slice(-2)}\`;return\`<option value="${v}"${v===CURMONTH?' selected':''}>${v}</option>\`;}).join('')}
+        ${MONTHS.map((m)=>{const v=m+'-'+String(NOW.getFullYear()).slice(-2);return'<option value="'+v+'"'+(v===CURMONTH?' selected':'')+'>'+v+'</option>';}).join('')}
       </select>
     </div>
     <div class="f2"><label>Note / Observation (optional)</label>
