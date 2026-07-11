@@ -2243,14 +2243,13 @@ setTimeout(function(){
 <script>
 async function downloadFile(uploadId, filename){
   try{
-    toast('⏳ Preparing download...');
+    toast('Preparing download...');
     const {doc,getDoc}=window.FS;
     const snap=await getDoc(doc(window.DB,'uploads',uploadId));
     if(!snap.exists()){toast('File not found.');return;}
     const b64=snap.data().fileData;
     if(!b64){toast('No file data stored.');return;}
-    // Parse data URL manually — avoids CSP fetch() restrictions on GitHub Pages
-    // Format: "data:mime/type;base64,AAAA..."
+    // Parse base64 data URL into Blob without fetch()
     const commaIdx=b64.indexOf(',');
     const mime=b64.substring(5,b64.indexOf(';'));
     const byteStr=atob(b64.substring(commaIdx+1));
@@ -2263,8 +2262,8 @@ async function downloadFile(uploadId, filename){
     a.style.display='none';
     document.body.appendChild(a);
     a.click();
-    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1500);
-    toast('✅ Download started!');
+    setTimeout(function(){URL.revokeObjectURL(url);document.body.removeChild(a);},1500);
+    toast('Download complete!');
   }catch(e){toast('Download error: '+e.message);}
 }
 </script>
