@@ -2249,16 +2249,21 @@ async function downloadFile(uploadId, filename){
     if(!snap.exists()){toast('File not found.');return;}
     const b64=snap.data().fileData;
     if(!b64){toast('No file data stored.');return;}
-    // Convert base64 data URL to blob to avoid page navigation
-    const res=await fetch(b64);
-    const blob=await res.blob();
+    // Parse data URL manually — avoids CSP fetch() restrictions on GitHub Pages
+    // Format: "data:mime/type;base64,AAAA..."
+    const commaIdx=b64.indexOf(',');
+    const mime=b64.substring(5,b64.indexOf(';'));
+    const byteStr=atob(b64.substring(commaIdx+1));
+    const arr=new Uint8Array(byteStr.length);
+    for(let i=0;i<byteStr.length;i++) arr[i]=byteStr.charCodeAt(i);
+    const blob=new Blob([arr],{type:mime});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');
     a.href=url; a.download=filename;
     a.style.display='none';
     document.body.appendChild(a);
     a.click();
-    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1000);
+    setTimeout(()=>{URL.revokeObjectURL(url);document.body.removeChild(a);},1500);
     toast('✅ Download started!');
   }catch(e){toast('Download error: '+e.message);}
 }
