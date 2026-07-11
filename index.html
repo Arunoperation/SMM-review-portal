@@ -498,14 +498,7 @@ async function login(){
     }
     // Admin items shown via buildSidebar() which checks CU.role
     buildBnav();
-    // Pre-load zones for admin upload zone picker
-    (async()=>{
-      try{
-        const {collection,getDocs}=window.FS;
-        const zSnap=await getDocs(collection(window.DB,'zones'));
-        window._allZones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
-      }catch(e){}
-    })();
+
     goto('dash');
     const lb=document.getElementById('logoutBtn');
     const cp=document.getElementById('chgPwBtn');
@@ -897,28 +890,13 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
   const allMonths=[...new Set(uploads.map(u=>u.month))].sort().reverse();
   const monthUps=uploads.filter(u=>u.month===selMonth);
 
-  let zones=[]; let depts=[];
-  if(isAdmin){
-    const [zSnap,dSnap]=await Promise.all([
-      getDocs(collection(window.DB,'zones')),
-      getDocs(collection(window.DB,'departments'))
-    ]);
-    zones=zSnap.docs.map(d=>({id:d.id,...d.data()}));
-    depts=dSnap.docs.map(d=>({id:d.id,...d.data()}));
-  }
+  // No zone grouping needed — coordinator uploads, simple flat file list
 
   const folderKey = skey+'__'+itemIdx; // unique key for upload widgets on this page
 
-  const uploadBlock = CU.role!=='consultant' ? `
+  const uploadBlock = (CU.role==='coordinator'||CU.role==='admin') ? `
   <div class="card">
-    <div class="cardHd">📤 Upload ${CU.role==='leader'?`<span class="pill pb">${esc(CU.zoneName||CU.zoneId)}</span>`:CU.role==='dept_leader'?`<span class="pill pp">${esc(CU.deptName||CU.deptId)}</span>`:`<span class="pill pg">Admin Upload</span>`}</div>
-    ${(CU.role==='admin'||CU.role==='coordinator')?`
-    <div class="f2"><label>Upload on behalf of Zone (optional)</label>
-      <select id="adminZoneSel-\${folderKey}">
-        <option value="">— General / Admin —</option>
-        \${(window._allZones||[]).map(z=>\`<option value="\${z.id}" data-name="\${z.name}">\${z.name}</option>\`).join('')}
-      </select>
-    </div>`:''}
+    <div class="cardHd">📤 Upload</div>
 
     <div class="f2"><label>Month</label>
       <select id="upMon-${folderKey}">
@@ -945,32 +923,12 @@ async function renderSectionItemDetail(skey, sec, modBand, isAdmin, itemIdx){
 
   const filesBlock = isAdmin ? `
   <div class="card">
-    <div class="cardHd">Files from All Zones
+    <div class="cardHd">📁 Uploaded Files
       <select onchange="window['_sm_${skey}_${itemIdx}']=this.value;renderSection('${skey}')" style="padding:5px 9px;border-radius:6px;border:1px solid var(--gray2);font-size:12px;">
         ${(allMonths.length?allMonths:[CURMONTH]).map(m=>`<option value="${m}"${m===selMonth?' selected':''}>${m}</option>`).join('')}
       </select>
     </div>
-    ${zones.filter(z=>monthUps.some(u=>u.zoneId===z.id) || !depts.length).map(z=>{
-      const zf=monthUps.filter(u=>u.zoneId===z.id);
-      return `<div style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
-          <span style="background:var(--navy);color:#fff;border-radius:5px;padding:2px 10px;font-size:11px;font-weight:700;">${esc(z.name)}</span>
-          <span class="pill ${zf.length?'pg':'pr'}">${zf.length?zf.length+' file(s)':'⚠ No upload'}</span>
-        </div>
-        ${zf.length?zf.map(u=>fRowHTML(u)).join(''):`<div style="padding:9px 12px;background:var(--red-l);border-radius:6px;font-size:12px;color:var(--red);">No files for ${selMonth}</div>`}
-      </div>`;
-    }).join('')}
-    ${depts.map(d=>{
-      const df=monthUps.filter(u=>u.deptId===d.id);
-      if(!df.length) return ''; // hide depts with no uploads to this item (cleaner for dept-specific sections)
-      return `<div style="margin-bottom:14px;">
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:7px;">
-          <span style="background:var(--purple);color:#fff;border-radius:5px;padding:2px 10px;font-size:11px;font-weight:700;">${esc(d.name)} (Dept)</span>
-          <span class="pill pg">${df.length} file(s)</span>
-        </div>
-        ${df.map(u=>fRowHTML(u)).join('')}
-      </div>`;
-    }).join('')}
+    ${monthUps.length ? monthUps.map(u=>fRowHTML(u)).join('') : `<div style="text-align:center;padding:24px;color:var(--gray3);font-size:13px;">No files uploaded for ${selMonth}.</div>`}
   </div>`:`
   <div class="card">
     <div class="cardHd">Your Uploaded Files
@@ -1036,19 +994,10 @@ async function doUploadItem(skey, itemIdx, folderKey){
     });
     try{
       const {collection,addDoc,serverTimestamp}=window.FS;
-      // Admin can upload on behalf of a zone
-      let uploadZoneId=CU.zoneId||'', uploadZoneName=CU.zoneName||'';
-      if(CU.role==='admin'||CU.role==='coordinator'){
-        const zoneSel=document.getElementById('adminZoneSel-'+folderKey);
-        if(zoneSel&&zoneSel.value){
-          uploadZoneId=zoneSel.value;
-          uploadZoneName=zoneSel.options[zoneSel.selectedIndex]?.dataset?.name||zoneSel.value;
-        }
-      }
       await addDoc(collection(window.DB,'uploads'),{
         sectionId:skey, name:pf.name, size:pf.size, month, checkItem, note,
-        zoneId:uploadZoneId, zoneName:uploadZoneName,
-        deptId:CU.deptId||'', deptName:CU.deptName||'',
+        zoneId:'', zoneName:'',
+        deptId:'', deptName:'',
         uploadedById:CU.id, uploadedBy:CU.name,
         fileData:b64,
         uploadedAt:serverTimestamp(), uploadedAtStr:new Date().toLocaleDateString()
@@ -1059,6 +1008,10 @@ async function doUploadItem(skey, itemIdx, folderKey){
   pendFiles[folderKey]=[];
   btn.disabled=false; prog.innerHTML='';
   if(uploaded>0) toast(`✅ ${uploaded} file(s) saved!`);
+  // Explicitly keep the detail view open after upload
+  // folderKey = skey+'__'+itemIdx, so extract itemIdx from folderKey
+  const _itemIdx = folderKey.replace(skey+'__','');
+  window['_item_'+skey] = isNaN(_itemIdx) ? _itemIdx : parseInt(_itemIdx);
   renderSection(skey);
 }
 
